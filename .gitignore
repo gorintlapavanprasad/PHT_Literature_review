@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment files
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Cache
+.cache/
+
+# Project data outputs
+paper_annotation/data/indexes/
+
+# Packaging
+build/
+dist/
+
+# === Additional exclusions (caught by safety check) ===
+
+# All ACM/research PDFs — at any path in the repo
+*.pdf
+!report/**/*.pdf
+!**/PHT_Literature_Review_Report.pdf
+
+# Top-level papers folder (corpus)
+papers/
+**/papers/
+
+# Human consensus data (lab data, not confirmed public)
+**/human_consensus.csv
+**/human_consensus/
+pht_ui/backend/data/human_consensus.csv
+
+# Embeddings cache (large binary, regeneratable)
+**/embeddings_cache.sqlite
+**/embeddings_cache*
+
+# Reference code if it contains anything sensitive
+# (review this folder before un-commenting if you want to include it)
+# reference\ code/

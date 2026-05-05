@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PHT Literature Review</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+  /* Viridis-inspired light palette — cream background, viridis-green accents */
+  :root {
+    --bg:           #f4f6f0;
+    --bg-panel:     #ffffff;
+    --border:       #d4dcc5;
+    --border-soft:  #e6ebdd;
+    --ink:          #1a2a1f;
+    --ink-soft:     #4a5d4e;
+    --ink-mute:     #7a8a7d;
+    --accent:       #2d6a4f;
+    --accent-hover: #1e4d38;
+    --accent-soft:  #d1e4d4;
+    /* Heatmap cells — true viridis 5-step scale */
+    --v1: #482878; --v1-text: #ffffff;
+    --v2: #3e4989; --v2-text: #ffffff;
+    --v3: #31688e; --v3-text: #ffffff;
+    --v4: #35b779; --v4-text: #0a2e1e;
+    --v5: #fde725; --v5-text: #2c2700;
+  }
+
+  /* Times New Roman everywhere, no italics anywhere */
+  *, *::before, *::after {
+    font-family: 'Times New Roman', Times, serif !important;
+    font-style: normal !important;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1.55;
+  }
+
+  .cell-1 { background: var(--v1); color: var(--v1-text); }
+  .cell-2 { background: var(--v2); color: var(--v2-text); }
+  .cell-3 { background: var(--v3); color: var(--v3-text); }
+  .cell-4 { background: var(--v4); color: var(--v4-text); }
+  .cell-5 { background: var(--v5); color: var(--v5-text); }
+  .cell-empty { background: #e6ebdd; color: #7a8a7d; }
+  .cell-pending { background: #edf1e6; color: #7a8a7d; }
+  .cell-error { background: #f5e0e0; color: #8b3a3a; }
+
+  .cell {
+    border: 1px solid var(--border-soft);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  .cell:hover {
+    transform: scale(1.02);
+    box-shadow: 0 3px 10px rgba(45, 106, 79, 0.2);
+    z-index: 2;
+    position: relative;
+  }
+
+  @keyframes pending-pulse {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 0.85; }
+  }
+  .cell-pending { animation: pending-pulse 1.8s ease-in-out infinite; }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    padding: 10px 22px;
+    border-radius: 6px;
+    font-size: 17px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .dropzone {
+    border: 2px dashed var(--border);
+    background: var(--bg-panel);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .panel-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(26, 42, 31, 0.4);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s; z-index: 50;
+  }
+  .panel-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 540px; max-width: 100vw;
+    background: var(--bg-panel);
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+    z-index: 51;
+    display: flex; flex-direction: column;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.12);
+  }
+  .panel.open { transform: translateX(0); }
+
+  .corpus-item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--ink-soft);
+  }
+  .corpus-item:hover { background: var(--accent-soft); color: var(--ink); }
+  .corpus-item.selected { background: var(--accent); color: white; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+
+  input, textarea, select { font-style: normal !important; }
+  input::placeholder { color: var(--ink-mute); }
+</style>
+</head>
+
+<body>
+
+<header style="background: var(--bg-panel); border-bottom: 1px solid var(--border);">
+  <div class="max-w-6xl mx-auto px-6 py-5" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;">
+    <div>
+      <h1 style="font-size: 32px; font-weight: bold; color: var(--ink);">PHT Literature Review</h1>
+      <p style="font-size: 17px; color: var(--ink-soft); margin-top: 4px;">
+        Upload a research paper and see how four AI models code it against the PHT framework.
+      </p>
+    </div>
+    <button id="corpus-btn" class="btn-primary" style="flex-shrink: 0; margin-top: 8px;">
+      Corpus
+    </button>
+  </div>
+</header>
+
+<!-- Why this project? — expandable so it's not in the way on return visits -->
+<section id="why-section" style="background: var(--accent-soft); border-bottom: 1px solid var(--border);">
+  <div class="max-w-6xl mx-auto px-6 py-4">
+    <details id="why-details">
+      <summary style="cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 4px 0;">
+        <span style="font-size: 18px; font-weight: bold; color: var(--ink);">Why this project?</span>
+        <span id="why-chevron" style="color: var(--ink-soft); font-size: 14px;">Click to expand &or;</span>
+      </summary>
+      <div style="margin-top: 18px; color: var(--ink-soft); font-size: 17px; line-height: 1.65;">
+        <p style="margin-bottom: 14px;">
+          <b>The problem.</b> Coding 215 accessibility research papers against an eight-dimension framework by hand
+          is slow work. Two human reviewers coded each paper and reached consensus through discussion, but this
+          process took the team roughly two years. We want to know whether large language models can produce
+          reliable framework codings faster, and where they agree or disagree with trained human coders.
+        </p>
+        <p style="margin-bottom: 14px;">
+          <b>The framework.</b> PHT (Playful Health Technology) is a framework from Duval (2022) that characterizes
+          games and play systems in accessibility research across eight design dimensions &mdash; such as whether
+          the system is fun-first or utility-first, solo or social, competitive or collaborative. Each dimension
+          uses a five-point scale. This interface shows a paper's score on each dimension, as coded by four
+          different language models and (where available) by the human consensus.
+        </p>
+        <p style="margin-bottom: 14px;">
+          <b>Why these four models.</b> Each of the four models represents a distinct choice in the AI landscape,
+          which lets us see whether agreement across models is a reliable signal of correctness:
+        </p>
+        <ul style="margin: 0 0 14px 24px; list-style: disc;">
+          <li style="margin-bottom: 6px;"><b>GPT-5.1 (OpenAI)</b> &mdash; a commercial closed-source flagship, representing the state of the art in proprietary models.</li>
+          <li style="margin-bottom: 6px;"><b>Gemini 2.5 Flash (Google)</b> &mdash; a commercial closed model optimized for speed; included to test whether a fast, cheaper model can match the flagship.</li>
+          <li style="margin-bottom: 6px;"><b>Llama 3.3 70B (Meta, served by Groq)</b> &mdash; a large open-weight model running on specialized inference hardware. Represents the open-source tier at scale.</li>
+          <li style="margin-bottom: 6px;"><b>Mistral Small (Mistral AI)</b> &mdash; a European open-weight model from a different lab; different training data and architecture choices than Llama.</li>
+        </ul>
+        <p style="margin-bottom: 14px;">
+          <b>How the models arrive at an answer.</b> The system reads the PDF, splits it into passages, searches
+          for passages relevant to the dimension being coded, and sends those passages to each model along with a
+          structured prompt. The prompt asks the model to explain its reasoning before naming an answer, to cite
+          the specific passages it used, and to rate its own confidence. When a paper does not describe a game or
+          play system, or when the evidence is insufficient, the model can say so honestly rather than guess.
+        </p>
+        <p style="margin-bottom: 0;">
+          <b>How to read the heatmap.</b> Each row is one PHT dimension, each column is one model. A cell's color
+          shows the answer (1&ndash;5 on the viridis scale). The small tag in the corner tells you how the model
+          arrived at the answer &mdash; whether it read the full paper, retrieved specific passages, or had
+          insufficient evidence. When human consensus data is available for a paper, it appears as a fifth column
+          with a green outline; model cells that match the human answer get a green border, and cells that differ
+          get a red border.
+        </p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<script>
+  // Tiny nicety: update the chevron text when the section expands/collapses.
+  (function(){
+    const d = document.getElementById('why-details');
+    const c = document.getElementById('why-chevron');
+    if (d && c) d.addEventListener('toggle', () => {
+      c.textContent = d.open ? 'Click to collapse \u2227' : 'Click to expand \u2228';
+    });
+  })();
+</script>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+
+  <section style="margin-bottom: 36px;">
+    <h2 style="font-size: 22px; font-weight: bold; margin-bottom: 12px;">Step 1. Upload a paper</h2>
+
+    <label id="dropzone" class="dropzone block text-center" style="padding: 40px; display: block;">
+      <input id="file-input" type="file" accept="application/pdf" class="hidden" />
+      <div style="font-size: 20px; color: var(--ink);">Drop a PDF here</div>
+      <div style="font-size: 16px; color: var(--ink-mute); margin-top: 8px;">or click to browse</div>
+    </label>
+
+    <div id="selected-bar" style="display: none; margin-top: 16px; padding: 14px 18px; background: var(--accent-soft); border-radius: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <span style="color: var(--ink-soft); font-size: 15px;">Selected paper:</span>
+          <span id="selected-paper-name" style="font-weight: bold; margin-left: 8px; color: var(--ink);"></span>
+        </div>
+        <button id="run-btn" class="btn-primary" disabled>Code this paper</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 style="font-size: 22px; font-weight: bold; margin-bottom: 6px;">Step 2. See how the models answered</h2>
+    <p style="color: var(--ink-soft); margin-bottom: 18px;">
+      Each row is a question from the PHT framework. Each column is an AI model.
+      Click any colored box to see the evidence behind the answer.
+    </p>
+
+    <div style="background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 22px;">
+      <div style="font-size: 16px; color: var(--ink-soft); margin-bottom: 10px;">What the colors mean (answer scale 1 to 5):</div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="cell-1 rounded-md" style="padding: 8px 16px; font-size: 16px; font-weight: bold;">1</div>
+        <div class="cell-2 rounded-md" style="padding: 8px 16px; font-size: 16px; font-weight: bold;">2</div>
+        <div class="cell-3 rounded-md" style="padding: 8px 16px; font-size: 16px; font-weight: bold;">3</div>
+        <div class="cell-4 rounded-md" style="padding: 8px 16px; font-size: 16px; font-weight: bold;">4</div>
+        <div class="cell-5 rounded-md" style="padding: 8px 16px; font-size: 16px; font-weight: bold;">5</div>
+        <div style="color: var(--ink-mute); font-size: 15px; margin-left: 8px;">low answer &rarr; high answer</div>
+      </div>
+      <div style="font-size: 14px; color: var(--ink-mute); margin-top: 12px; line-height: 1.7;">
+        Each cell shows the <b>answer</b> on top and the <b>confidence score</b> below.
+        The small tag in the corner says how the model arrived at the answer:
+        <b>FC</b> = used full paper,
+        <b>RT</b> = used retrieval,
+        <b>RX</b> = retry with more context,
+        <b style="color:#b02c2c;">FORCED</b> = model had to guess.
+        A red <b style="color:#b02c2c;">!</b> flags low-confidence answers (below 65%).
+      </div>
+    </div>
+
+    <div id="empty-state" style="background: var(--bg-panel); border: 1px dashed var(--border); border-radius: 8px; padding: 56px 24px; text-align: center;">
+      <div style="font-size: 20px; color: var(--ink-soft);">Pick a paper above to see the results.</div>
+    </div>
+
+    <div id="heatmap-wrap" style="display: none; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 22px; overflow-x: auto;">
+      <div id="heatmap"></div>
+    </div>
+
+    <div id="progress-bar" style="display: none; margin-top: 16px; padding: 12px 18px; background: var(--accent-soft); border-radius: 8px; font-size: 16px; color: var(--ink);">
+      <span id="progress-text">Starting...</span>
+    </div>
+  </section>
+
+</main>
+
+<!-- Corpus modal -->
+<div id="corpus-backdrop" class="panel-backdrop"></div>
+<div id="corpus-modal" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.96); width: 560px; max-width: 90vw; max-height: 80vh; background: var(--bg-panel); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); display: flex; flex-direction: column; z-index: 52; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;">
+  <header style="padding: 20px 24px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between;">
+    <div>
+      <div style="font-size: 22px; font-weight: bold; color: var(--ink);">Corpus</div>
+      <div id="paper-count" style="font-size: 15px; color: var(--ink-mute); margin-top: 2px;"></div>
+    </div>
+    <button id="corpus-close" style="font-size: 24px; background: none; border: none; color: var(--ink-mute); cursor: pointer;">&times;</button>
+  </header>
+  <div style="padding: 18px 24px; border-bottom: 1px solid var(--border-soft);">
+    <input id="paper-filter" placeholder="Search papers..."
+           style="width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px; font-size: 16px;"/>
+  </div>
+  <div id="paper-list" style="flex: 1; overflow-y: auto; padding: 12px 24px 20px 24px;"></div>
+</div>
+
+<div id="panel-backdrop" class="panel-backdrop"></div>
+<aside id="panel" class="panel">
+  <header style="padding: 22px 26px; border-bottom: 1px solid var(--border-soft);">
+    <button id="panel-close" style="float: right; font-size: 24px; background: none; border: none; color: var(--ink-mute); cursor: pointer;">&times;</button>
+    <div id="panel-dim" style="font-size: 15px; color: var(--ink-mute);">Question</div>
+    <div id="panel-model" style="font-size: 22px; font-weight: bold; margin-top: 4px;">Model</div>
+  </header>
+
+  <div style="flex: 1; overflow-y: auto; padding: 22px 26px;">
+    <div style="display: flex; align-items: center; gap: 28px; margin-bottom: 28px; flex-wrap: wrap;">
+      <div>
+        <div style="font-size: 14px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 1px;">Answer</div>
+        <div id="panel-answer" style="font-size: 60px; font-weight: bold; line-height: 1;">&mdash;</div>
+      </div>
+      <div>
+        <div style="font-size: 14px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 1px;">How sure</div>
+        <div id="panel-confidence" style="font-size: 26px; font-weight: bold;">&mdash;</div>
+      </div>
+      <div>
+        <div style="font-size: 14px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 1px;">How decided</div>
+        <div id="panel-mode" style="font-size: 17px; font-weight: bold;">&mdash;</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 22px;">
+      <div style="font-size: 15px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">The question</div>
+      <div id="panel-question" style="font-size: 17px; line-height: 1.6; white-space: pre-line;"></div>
+    </div>
+
+    <div style="margin-bottom: 22px;">
+      <div style="font-size: 15px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Why the model chose this answer</div>
+      <div id="panel-reasoning" style="font-size: 17px; line-height: 1.6;"></div>
+    </div>
+
+    <div>
+      <div style="font-size: 15px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Evidence from the paper</div>
+      <div id="panel-evidence"></div>
+    </div>
+  </div>
+</aside>
+
+<script>
+const DIM_NAMES = [
+  "Fun vs. Utility",
+  "Play Structure",
+  "Skill vs. Chance",
+  "Solo vs. Social",
+  "Turn Structure",
+  "Synchronous vs. Asynchronous",
+  "Competitive vs. Collaborative",
+  "Symmetry",
+  "Dimension 9",
+];
+
+const State = { models: [], paperId: null, results: {}, humanAnswers: {}, eventSource: null };
+const $ = (sel) => document.querySelector(sel);
+
+function clearResults() {
+  State.results = {};
+  for (const m of State.models) State.results[m.alias] = {};
+}
+
+(async function() {
+  try {
+    const meta = await fetch('/api/meta').then(r => r.json());
+    State.models = meta.models;
+    State.dimensions = meta.dimensions;
+    clearResults();
+    await loadPapers();
+  } catch (e) {
+    alert('Could not connect to the server.');
+  }
+})();
+
+async function loadPapers() {
+  const { papers } = await fetch('/api/papers').then(r => r.json());
+  $('#paper-count').textContent = papers.length + ' papers available';
+  const list = $('#paper-list');
+  list.innerHTML = '';
+  papers.forEach(pid => {
+    const row = document.createElement('div');
+    row.className = 'corpus-item';
+    row.textContent = pid;
+    row.dataset.pid = pid;
+    row.addEventListener('click', () => selectPaper(pid, true));
+    list.appendChild(row);
+  });
+}
+
+$('#paper-filter').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.corpus-item').forEach(d => {
+    d.style.display = d.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
+// Corpus modal
+function openCorpus() {
+  $('#corpus-modal').style.opacity = '1';
+  $('#corpus-modal').style.pointerEvents = 'auto';
+  $('#corpus-modal').style.transform = 'translate(-50%, -50%) scale(1)';
+  $('#corpus-backdrop').classList.add('open');
+  $('#paper-filter').focus();
+}
+function closeCorpus() {
+  $('#corpus-modal').style.opacity = '0';
+  $('#corpus-modal').style.pointerEvents = 'none';
+  $('#corpus-modal').style.transform = 'translate(-50%, -50%) scale(0.96)';
+  $('#corpus-backdrop').classList.remove('open');
+}
+$('#corpus-btn').addEventListener('click', openCorpus);
+$('#corpus-close').addEventListener('click', closeCorpus);
+$('#corpus-backdrop').addEventListener('click', closeCorpus);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeCorpus();
+});
+
+const dropzone = $('#dropzone');
+const fileInput = $('#file-input');
+// NOTE: no manual 'click' handler — the <label> natively forwards clicks to
+// its wrapped <input>, so adding a JS click handler here caused a double-fire
+// where the second programmatic .click() cancelled the first on some browsers.
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) upload(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) upload(e.target.files[0]); });
+
+async function upload(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Please upload a PDF file.');
+    return;
+  }
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: form }).then(r => r.json());
+    await selectPaper(res.paper_id, false);
+    await loadPapers();
+  } catch (e) { alert('Upload failed.'); }
+}
+
+async function selectPaper(pid, loadCached) {
+  State.paperId = pid;
+  State.humanAnswers = {};
+  $('#selected-paper-name').textContent = pid;
+  $('#selected-bar').style.display = 'block';
+  $('#run-btn').disabled = false;
+
+  document.querySelectorAll('.corpus-item').forEach(d => {
+    d.classList.toggle('selected', d.dataset.pid === pid);
+  });
+
+  closeCorpus();
+  clearResults();
+
+  // Always fetch /api/results — it gives us human_answers even if there are
+  // no model results yet.
+  try {
+    const res = await fetch(`/api/results/${encodeURIComponent(pid)}`).then(r => r.json());
+    // Normalize human answer keys from strings to ints
+    const ha = {};
+    for (const [k, v] of Object.entries(res.human_answers || {})) ha[+k] = v;
+    State.humanAnswers = ha;
+    if (loadCached) {
+      for (const [alias, byQ] of Object.entries(res.results || {})) {
+        for (const [qi, rec] of Object.entries(byQ)) {
+          State.results[alias][+qi] = { record: rec };
+        }
+      }
+    }
+  } catch (e) {
+    // Non-fatal — continue without human answers
+  }
+
+  showHeatmap();
+}
+
+function showHeatmap() {
+  const hasAny = Object.values(State.results).some(m => Object.keys(m).length > 0) ||
+                 Object.keys(State.humanAnswers).length > 0;
+  if (hasAny) {
+    $('#empty-state').style.display = 'none';
+    $('#heatmap-wrap').style.display = 'block';
+    renderHeatmap();
+  } else {
+    $('#empty-state').style.display = 'block';
+    $('#heatmap-wrap').style.display = 'none';
+  }
+}
+
+function renderHeatmap() {
+  const el = $('#heatmap');
+  el.innerHTML = '';
+  const modelCount = State.models.length;
+  const dimCount = State.dimensions.length;
+  const hasHuman = Object.keys(State.humanAnswers).length > 0;
+  // Total columns = 1 label + (Human if present) + model columns
+  const totalCols = (hasHuman ? 1 : 0) + modelCount;
+  const gridTmpl = `display: grid; grid-template-columns: 240px repeat(${totalCols}, 1fr); gap: 8px;`;
+
+  // Column header row
+  const header = document.createElement('div');
+  header.style.cssText = gridTmpl + ' margin-bottom: 10px;';
+  header.appendChild(document.createElement('div'));
+  if (hasHuman) {
+    const h = document.createElement('div');
+    h.style.cssText = 'text-align: center; font-weight: bold; font-size: 15px; color: var(--ink); padding: 4px; border-bottom: 2px solid var(--accent);';
+    h.textContent = 'Human';
+    header.appendChild(h);
+  }
+  State.models.forEach(m => {
+    const h = document.createElement('div');
+    h.style.cssText = 'text-align: center; font-weight: bold; font-size: 15px; color: var(--ink-soft); padding: 4px;';
+    h.textContent = m.label;
+    header.appendChild(h);
+  });
+  el.appendChild(header);
+
+  // Data rows
+  for (let i = 0; i < dimCount; i++) {
+    const row = document.createElement('div');
+    row.style.cssText = gridTmpl + ' margin-bottom: 8px;';
+    const label = document.createElement('div');
+    label.style.cssText = 'padding: 10px; font-size: 16px; color: var(--ink);';
+    label.textContent = DIM_NAMES[i] || `Dimension ${i+1}`;
+    row.appendChild(label);
+    if (hasHuman) row.appendChild(makeHumanCell(i));
+    State.models.forEach(m => row.appendChild(makeCell(m.alias, i)));
+    el.appendChild(row);
+  }
+}
+
+function makeHumanCell(qi) {
+  const c = document.createElement('div');
+  c.className = 'cell rounded-md';
+  c.style.cssText = 'height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 6px; border: 2px solid var(--accent);';
+  const ans = State.humanAnswers[qi];
+  if (typeof ans === 'number' && ans >= 1 && ans <= 5) {
+    c.classList.add(`cell-${ans}`);
+    c.innerHTML = `
+      <div style="font-size: 26px; font-weight: bold; line-height: 1;">${ans}</div>
+      <div style="font-size: 11px; opacity: 0.85; margin-top: 2px;">human</div>
+    `;
+  } else {
+    c.classList.add('cell-empty');
+    c.textContent = '—';
+  }
+  return c;
+}
+
+function makeCell(alias, qi) {
+  const c = document.createElement('div');
+  c.className = 'cell rounded-md';
+  c.style.cssText = 'height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 6px;';
+  c.dataset.model = alias;
+  c.dataset.q = qi;
+  const entry = State.results[alias][qi];
+  const human = State.humanAnswers[qi];
+
+  if (!entry) {
+    c.classList.add('cell-empty');
+    c.textContent = '\u2014';
+  } else if (entry.pending) {
+    c.classList.add('cell-pending');
+    c.textContent = '...';
+  } else if (entry.error) {
+    c.classList.add('cell-error');
+    c.textContent = 'err';
+  } else {
+    const r = entry.record;
+    const ans = r.answer;
+    if (typeof ans === 'number' && ans >= 1 && ans <= 5) {
+      c.classList.add(`cell-${ans}`);
+      const conf = Number(r.confidence || 0);
+      const mode = r.decision_mode || '';
+
+      const lowConf = conf > 0 && conf < 0.65;
+      const isForced = mode === 'forced_choice';
+
+      let modeChip = '';
+      if (mode) {
+        const labels = {
+          full_context: 'FC', retrieval: 'RT', expanded_retry: 'RX',
+          forced_choice: 'FORCED', api_failure: 'API', parse_failure: 'PARSE',
+        };
+        const chipColor = isForced ? '#d04040' : 'currentColor';
+        modeChip = `<div style="position: absolute; top: 4px; right: 6px; font-size: 10px; font-weight: bold; opacity: 0.75; color: ${chipColor};">${labels[mode] || mode}</div>`;
+      }
+
+      const warnMark = lowConf ? '<span style="color:#d04040; font-weight: bold;" title="Low confidence">!</span>' : '';
+
+      // If we have a human answer for this question, flag agreement.
+      // Matching  -> thick green border. Differing -> thin red border.
+      // No human  -> no border.
+      if (typeof human === 'number' && human >= 1 && human <= 5) {
+        if (ans === human) {
+          c.style.border = '3px solid #2d6a4f';
+        } else {
+          c.style.border = '3px solid #b02c2c';
+        }
+      }
+
+      c.innerHTML = `
+        ${modeChip}
+        <div style="font-size: 26px; font-weight: bold; line-height: 1;">${ans}</div>
+        <div style="font-size: 12px; opacity: 0.85; margin-top: 2px;">
+          ${Math.round(conf * 100)}% ${warnMark}
+        </div>
+      `;
+    } else {
+      c.classList.add('cell-empty');
+      c.textContent = '?';
+    }
+  }
+  c.addEventListener('click', () => openPanel(alias, qi));
+  return c;
+}
+
+$('#run-btn').addEventListener('click', runPipeline);
+
+function runPipeline() {
+  if (!State.paperId) return;
+  $('#run-btn').disabled = true;
+  $('#progress-bar').style.display = 'block';
+  $('#progress-text').textContent = 'Reading the paper...';
+
+  for (const m of State.models) {
+    for (let i = 0; i < State.dimensions.length; i++) {
+      if (!State.results[m.alias][i]) State.results[m.alias][i] = { pending: true };
+    }
+  }
+  showHeatmap();
+
+  const es = new EventSource(`/api/stream/${encodeURIComponent(State.paperId)}`);
+  State.eventSource = es;
+
+  let completed = 0;
+  const total = State.models.length * State.dimensions.length;
+
+  es.addEventListener('ingest_done', () => {
+    $('#progress-text').textContent = 'Asking the models...';
+  });
+  es.addEventListener('result', (e) => {
+    const d = JSON.parse(e.data);
+    State.results[d.model][d.question_index] = { record: d.record };
+    const cell = document.querySelector(`.cell[data-model="${d.model}"][data-q="${d.question_index}"]`);
+    if (cell) cell.replaceWith(makeCell(d.model, d.question_index));
+    completed++;
+    $('#progress-text').textContent = `Working... ${completed} of ${total} answers done`;
+  });
+  es.addEventListener('result_error', (e) => {
+    const d = JSON.parse(e.data);
+    State.results[d.model][d.question_index] = { error: true };
+    const cell = document.querySelector(`.cell[data-model="${d.model}"][data-q="${d.question_index}"]`);
+    if (cell) cell.replaceWith(makeCell(d.model, d.question_index));
+  });
+  es.addEventListener('model_error', (e) => {
+    const d = JSON.parse(e.data);
+    for (let i = 0; i < State.dimensions.length; i++) {
+      if (!State.results[d.model][i] || State.results[d.model][i].pending) {
+        State.results[d.model][i] = { error: true };
+      }
+    }
+    renderHeatmap();
+  });
+  es.addEventListener('error', (e) => {
+    if (e.data) {
+      $('#progress-text').textContent = 'Something went wrong.';
+      finish();
+    }
+  });
+  es.addEventListener('done', () => {
+    $('#progress-text').textContent = 'Done!';
+    setTimeout(() => { $('#progress-bar').style.display = 'none'; }, 2500);
+    finish();
+    loadPapers();
+  });
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED) finish(); };
+}
+
+function finish() {
+  if (State.eventSource) State.eventSource.close();
+  State.eventSource = null;
+  $('#run-btn').disabled = false;
+}
+
+$('#panel-close').addEventListener('click', closePanel);
+$('#panel-backdrop').addEventListener('click', closePanel);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+function closePanel() {
+  $('#panel').classList.remove('open');
+  $('#panel-backdrop').classList.remove('open');
+}
+
+function openPanel(alias, qi) {
+  const entry = State.results[alias][qi];
+  const modelLabel = State.models.find(m => m.alias === alias)?.label || alias;
+  $('#panel-dim').textContent = DIM_NAMES[qi] || `Question ${qi+1}`;
+  $('#panel-model').textContent = modelLabel;
+
+  if (!entry || entry.pending) {
+    $('#panel-answer').textContent = '\u2014';
+    $('#panel-confidence').textContent = '\u2014';
+    $('#panel-mode').textContent = '\u2014';
+    $('#panel-question').textContent = '';
+    $('#panel-reasoning').textContent = 'No answer yet.';
+    $('#panel-evidence').innerHTML = '';
+  } else if (entry.error) {
+    $('#panel-answer').textContent = '!';
+    $('#panel-confidence').textContent = '\u2014';
+    $('#panel-mode').textContent = 'Failed';
+    $('#panel-question').textContent = '';
+    $('#panel-reasoning').textContent = 'This model could not be reached. Check that the API key is set.';
+    $('#panel-evidence').innerHTML = '';
+  } else {
+    const r = entry.record;
+    $('#panel-answer').textContent = r.answer;
+    const conf = Number(r.confidence || 0);
+    $('#panel-confidence').textContent = Math.round(conf * 100) + '%';
+
+    const modeLabels = {
+      full_context: 'Read full paper',
+      retrieval:    'Searched paper',
+      expanded_retry: 'Searched with more context',
+      forced_choice: 'Forced best guess',
+      api_failure:  'API failure',
+      parse_failure: 'Could not parse response',
+    };
+    const mode = r.decision_mode || '';
+    const modeText = modeLabels[mode] || mode || '\u2014';
+    // Red-tint forced_choice so it stands out — per Shelby's analysis these
+    // correlate with worse accuracy
+    if (mode === 'forced_choice') {
+      $('#panel-mode').style.color = '#b02c2c';
+    } else {
+      $('#panel-mode').style.color = 'var(--ink)';
+    }
+    $('#panel-mode').textContent = modeText;
+
+    $('#panel-question').textContent = r.question || '';
+    $('#panel-reasoning').textContent = r.reasoning || '\u2014';
+    renderEvidence(r);
+  }
+
+  $('#panel').classList.add('open');
+  $('#panel-backdrop').classList.add('open');
+}
+
+function renderEvidence(record) {
+  const ev = record.evidence_metadata || [];
+  const box = $('#panel-evidence');
+  if (!ev.length) {
+    box.innerHTML = '<div style="color: var(--ink-mute); font-size: 16px;">No specific passages were cited.</div>';
+    return;
+  }
+  box.innerHTML = ev.map(c => `
+    <div style="border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
+      <div style="font-size: 15px; color: var(--ink-soft);">
+        Page ${c.page_start}${c.page_end !== c.page_start ? '\u2013' + c.page_end : ''}
+      </div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>

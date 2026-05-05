@@ -1,0 +1,13 @@
+openai
+pymupdf
+langchain
+langchain-community
+sentence-transformers
+faiss-cpu
+pandas
+tqdm
+python-dotenv
+pydantic
+numpy
+requests
+google-genai
