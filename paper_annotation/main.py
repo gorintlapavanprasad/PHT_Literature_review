@@ -193,6 +193,11 @@ def ingest_paper(
     step_start = time.perf_counter()
     chunks = chunk_text(paper_id, cleaned_page_objs, chunk_size=config.chunk_size, chunk_overlap=config.chunk_overlap)
     logging.info("Chunked %s into %s chunks in %.2fs", pdf_path.name, len(chunks), time.perf_counter() - step_start)
+    if not chunks:
+        raise ValueError(
+            f"No extractable text in {pdf_path.name}. It is probably a scanned/image-only PDF; "
+            "run OCR on it first (e.g. ocrmypdf) and re-upload."
+        )
 
     step_start = time.perf_counter()
     embedded = build_faiss_index(chunks, embedding_service=embedding_service)
@@ -240,6 +245,7 @@ def annotate_paper(
             prompt_version=config.prompt_version,
             top_k=config.top_k,
             question_index=q_index,
+            max_expansions=config.max_expansions,
         )
 
     return run_bounded(question_payloads, _worker, max_workers=config.max_concurrency)

@@ -1,0 +1,20 @@
+# Everything the test-suite needs EXCEPT torch/sentence-transformers (tests use a fake embedder).
+-r pht_ui/backend/requirements.txt
+openai
+pymupdf
+faiss-cpu
+pandas
+numpy
+pydantic
+python-dotenv
+requests
+google-genai
+huggingface_hub
+scipy
+scikit-learn
+scikit-posthocs
+tabulate
+joblib
+tqdm
+pytest
+httpx

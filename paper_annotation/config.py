@@ -13,6 +13,7 @@ PIPELINE_CONFIG = {
     "embedding_model_name": "BAAI/bge-large-en-v1.5",
     "top_k": 15,
     "lexical_top_k": 50,
+    "max_expansions": 2,
     "max_concurrency": 1,
     "ingest_concurrency": 2,
 }
@@ -96,6 +97,7 @@ class Config:
     chunk_overlap: int
     top_k: int
     lexical_top_k: int
+    max_expansions: int
     max_concurrency: int
     ingest_concurrency: int
     model_name: str
@@ -134,6 +136,7 @@ def load_config() -> Config:
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", str(PIPELINE_CONFIG["chunk_overlap"]))),
         top_k=int(os.getenv("TOP_K", str(PIPELINE_CONFIG.get("top_k")))),
         lexical_top_k=int(os.getenv("LEXICAL_TOP_K", str(PIPELINE_CONFIG.get("lexical_top_k")))),
+        max_expansions=int(os.getenv("MAX_EXPANSIONS", str(PIPELINE_CONFIG["max_expansions"]))),
         max_concurrency=int(os.getenv("MAX_CONCURRENCY", str(PIPELINE_CONFIG.get("max_concurrency")))),
         ingest_concurrency=int(os.getenv("INGEST_CONCURRENCY", str(PIPELINE_CONFIG.get("ingest_concurrency")))),
         model_name=os.getenv("MODEL_NAME", "gpt-4o-mini"),

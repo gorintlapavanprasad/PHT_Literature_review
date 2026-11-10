@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import re
 from typing import List
 
 from llm.base import BaseLLM
@@ -62,12 +63,21 @@ def _penalize_confidence(confidence: float, evidence: List[str]) -> float:
 
 def _parse_llm_response(raw_response: str) -> dict:
     """Parse JSON from the LLM, tolerant of providers that wrap it."""
-    try:
-        parsed = json.loads(raw_response)
+    text = (raw_response or "").strip()
+    candidates = [text]
+    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fence:
+        candidates.append(fence.group(1))
+    brace = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace:
+        candidates.append(brace.group(0))
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
         if isinstance(parsed, dict):
             return parsed
-    except json.JSONDecodeError:
-        pass
     return {
         "answer": "Unknown",
         "confidence": 0.0,
@@ -79,15 +89,18 @@ def _parse_llm_response(raw_response: str) -> dict:
 
 def _normalize_answer(answer) -> str | int:
     """Coerce the answer field into int 1-5, 'Unknown', or 'Not Applicable'."""
+    if isinstance(answer, bool):  # bool is an int subclass; True must not become 1
+        return "Unknown"
+    if isinstance(answer, float) and answer.is_integer():
+        answer = int(answer)
     if isinstance(answer, int) and 1 <= answer <= 5:
         return answer
     if isinstance(answer, str):
         s = answer.strip()
-        # Strings like "3" or "3." that should be ints
-        if s.rstrip(".").isdigit():
-            n = int(s.rstrip("."))
-            if 1 <= n <= 5:
-                return n
+        # Strings like "3", "3.", "(3)", "3 - mostly skill", "3.0"
+        m = re.match(r"^\(?\s*([1-5])(?:\.0)?\s*\)?(?:[\s.:\-–—)].*)?$", s, re.DOTALL)
+        if m:
+            return int(m.group(1))
         low = s.lower()
         if "not applicable" in low or low in ("n/a", "na"):
             return "Not Applicable"
@@ -112,13 +125,14 @@ def annotate_question(
     prompt_version: str,
     top_k: int,
     question_index: int | None = None,
+    max_expansions: int = 1,
 ) -> AnnotationRecord:
     """Annotate a single question for a paper.
 
     Flow:
       1. If paper has <=30 chunks, pass full paper. One LLM call.
       2. Otherwise, retrieve top-k chunks. One LLM call.
-      3. If that returned Unknown, retry with 2x top-k. One more LLM call.
+      3. If that returned Unknown, retry with 2x, 4x, ... top-k (up to max_expansions extra calls).
       4. Accept whatever came back — including Unknown / Not Applicable.
          No forced guessing.
     """
@@ -133,8 +147,11 @@ def annotate_question(
         raw = llm.generate(prompt)
         response = _parse_llm_response(raw)
         total_latency += float(response.get("latency_seconds", 0.0))
-        if _is_resolved(_normalize_answer(response.get("answer"))):
+        full_answer = _normalize_answer(response.get("answer"))
+        if _is_resolved(full_answer):
             decision_mode = "full_context"
+        elif full_answer == "Not Applicable":
+            decision_mode = "not_applicable"
     else:
         # Standard retrieval pass.
         retrieval = retriever.retrieve(
@@ -154,36 +171,40 @@ def annotate_question(
         elif first_answer == "Not Applicable":
             decision_mode = "not_applicable"
         else:
-            # First pass was Unknown — try again with a wider window.
-            expanded_top_k = min(total_chunks, max(top_k + 1, top_k * _UNKNOWN_RETRY_MULTIPLIER))
-            if expanded_top_k > top_k:
-                retry_retrieval = retriever.retrieve(
-                    query=question,
-                    query_embedding=query_embedding,
-                    top_k=expanded_top_k,
-                )
-                retry_chunks = retry_retrieval.chunks
-                retry_prompt = build_prompt(question, retry_chunks, question_index=question_index)
-                retry_raw = llm.generate(retry_prompt)
+            # First pass was Unknown: keep widening the window (k*2, k*4, ...), up to
+            # `max_expansions` extra LLM calls, stopping at the first committed answer.
+            current_k = top_k
+            for _ in range(max_expansions):
+                expanded_top_k = min(total_chunks, max(current_k + 1, current_k * _UNKNOWN_RETRY_MULTIPLIER))
+                if expanded_top_k <= current_k:
+                    break  # already using every chunk
+                current_k = expanded_top_k
+                retry_chunks = retriever.retrieve(
+                    query=question, query_embedding=query_embedding, top_k=current_k
+                ).chunks
+                retry_raw = llm.generate(build_prompt(question, retry_chunks, question_index=question_index))
                 retry_response = _parse_llm_response(retry_raw)
                 total_latency += float(retry_response.get("latency_seconds", 0.0))
                 retry_answer = _normalize_answer(retry_response.get("answer"))
-
-                # Prefer the retry only when it resolves Unknown.
                 if _is_resolved(retry_answer):
-                    selected_chunks = retry_chunks
-                    response = retry_response
-                    decision_mode = "expanded_retry"
-                elif retry_answer == "Not Applicable":
-                    selected_chunks = retry_chunks
-                    response = retry_response
-                    decision_mode = "not_applicable"
-                # If retry also returned Unknown, keep decision_mode = "unresolved"
+                    selected_chunks, response, decision_mode = retry_chunks, retry_response, "expanded_retry"
+                    break
+                if retry_answer == "Not Applicable":
+                    selected_chunks, response, decision_mode = retry_chunks, retry_response, "not_applicable"
+                    break
+                # still Unknown: keep the widest context seen so the record reflects what the model saw
+                selected_chunks = retry_chunks
+            else:
+                pass  # exhausted expansions: decision_mode stays "unresolved" (honest Unknown)
 
     # Extract final fields.
     answer = _normalize_answer(response.get("answer"))
-    confidence = float(response.get("confidence", 0.0))
-    evidence = list(response.get("evidence", []))
+    try:
+        confidence = float(response.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    raw_evidence = response.get("evidence", [])
+    evidence = [str(e) for e in raw_evidence] if isinstance(raw_evidence, list) else []
     reasoning = response.get("reasoning", "")
     latency = total_latency
 

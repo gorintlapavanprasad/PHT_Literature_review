@@ -11,3 +11,9 @@ pydantic
 numpy
 requests
 google-genai
+huggingface_hub
+scipy
+scikit-learn
+scikit-posthocs
+tabulate
+joblib

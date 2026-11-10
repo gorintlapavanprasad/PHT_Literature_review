@@ -20,8 +20,15 @@ class RetrievalResult:
     chunks: List[TextChunk]
 
 
+_STOPWORDS = frozenset(
+    "a an and are as at be by for from has have in is it its of on or that the this to was were which with "
+    "i e g best apply following design study please answer question number number which entirely mostly "
+    "totally both".split()
+)
+
+
 def _tokenize(text: str) -> List[str]:
-    return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if t]
+    return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if t and t not in _STOPWORDS]
 
 
 class HybridRetriever:
@@ -64,6 +71,14 @@ class HybridRetriever:
             distances.append((idx, distance))
         distances.sort(key=lambda item: (item[1], self._embedded.chunks[item[0]].chunk_id))
         top_indices = [idx for idx, _ in distances[:top_k]]
+        if len(top_indices) < top_k:
+            # Lexical filter was too narrow: backfill with pure vector hits.
+            _, extra = self._embedded.index.search(query_embedding.reshape(1, -1), top_k)
+            for i in extra[0]:
+                if i >= 0 and int(i) not in top_indices:
+                    top_indices.append(int(i))
+                if len(top_indices) >= top_k:
+                    break
         chunks = [self._embedded.chunks[i] for i in top_indices]
         return RetrievalResult(query=query, chunks=chunks)
 

@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import AsyncGenerator
@@ -32,13 +33,25 @@ from fastapi.staticfiles import StaticFiles
 # ---------------------------------------------------------------------------
 # Import the existing pipeline without touching it.
 # ---------------------------------------------------------------------------
-PIPELINE_ROOT = Path(__file__).resolve().parents[1].parent / "literature-review-worker-model-main" / "paper_annotation"
-if not PIPELINE_ROOT.exists():
-    # Allow overriding via env for local dev or Docker paths.
-    import os
+import os  # noqa: E402
+
+def _resolve_pipeline_root() -> Path:
+    """Find paper_annotation/: env override, then this repo, then legacy layout."""
     override = os.getenv("PIPELINE_ROOT")
     if override:
-        PIPELINE_ROOT = Path(override)
+        return Path(override)
+    repo_root = Path(__file__).resolve().parents[2]
+    for candidate in (
+        repo_root / "paper_annotation",
+        repo_root.parent / "literature-review-worker-model-main" / "paper_annotation",
+    ):
+        if candidate.exists():
+            return candidate
+    raise RuntimeError(
+        "Could not find paper_annotation/. Set the PIPELINE_ROOT env var to its absolute path."
+    )
+
+PIPELINE_ROOT = _resolve_pipeline_root()
 sys.path.insert(0, str(PIPELINE_ROOT))
 
 load_dotenv(PIPELINE_ROOT / ".env")
@@ -92,7 +105,8 @@ log = logging.getLogger("pht_ui")
 app = FastAPI(title="PHT Literature Review")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # local-only tool, single-user
+    # Local single-user tool by default; set CORS_ORIGINS="https://a.com,https://b.com" when hosting.
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -178,6 +192,45 @@ def _load_existing_results(paper_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
+@app.get("/api/health")
+async def health():
+    """Liveness probe for Docker / cloud load balancers (does not load any model)."""
+    return {"status": "ok", "pipeline_root": str(PIPELINE_ROOT)}
+
+
+# One lock per results file: concurrent streams for the same paper must not overwrite each other.
+_write_locks: dict[str, threading.Lock] = {}
+_write_locks_guard = threading.Lock()
+
+
+def _lock_for(path: Path) -> threading.Lock:
+    with _write_locks_guard:
+        return _write_locks.setdefault(str(path), threading.Lock())
+
+
+def _persist_records(out_path: Path, new_records: list) -> None:
+    """Merge new records into whatever is on disk NOW (under a lock) and write atomically."""
+    from pipeline.annotate import AnnotationRecord
+    from storage.writer import write_jsonl
+
+    with _lock_for(out_path):
+        by_q: dict[int, AnnotationRecord] = {}
+        if out_path.exists():
+            for line in out_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("question") in PHT_FRAMEWORK_QUESTIONS:
+                    by_q[PHT_FRAMEWORK_QUESTIONS.index(rec["question"])] = AnnotationRecord(**{
+                        k: v for k, v in rec.items() if k in AnnotationRecord.__dataclass_fields__})
+        for r in new_records:
+            by_q[PHT_FRAMEWORK_QUESTIONS.index(r.question)] = r
+        write_jsonl([by_q[i] for i in sorted(by_q)], out_path)
+
+
 @app.get("/api/meta")
 async def get_meta():
     """Frontend boot metadata: dimensions, models, paper count."""
@@ -373,6 +426,7 @@ async def stream_annotation(paper_id: str):
                             prompt_version=cfg.prompt_version,
                             top_k=cfg.top_k,
                             question_index=qi,
+                            max_expansions=cfg.max_expansions,
                         ),
                     )
                 except Exception as exc:
@@ -390,25 +444,10 @@ async def stream_annotation(paper_id: str):
                     "record": record.__dict__,
                 }))
 
-            # Persist the new records alongside any prior ones.
-            if new_records or existing:
+            # Persist new records, merged with whatever is on disk right now.
+            if new_records:
                 try:
-                    from pipeline.annotate import AnnotationRecord
-                    merged: list[AnnotationRecord] = []
-                    for idx in range(len(PHT_FRAMEWORK_QUESTIONS)):
-                        if idx in existing:
-                            # Rehydrate from dict — we only need dict-like for write.
-                            merged.append(AnnotationRecord(**{
-                                k: v for k, v in existing[idx].items()
-                                if k in AnnotationRecord.__dataclass_fields__
-                            }))
-                        else:
-                            match = next((r for r in new_records
-                                          if PHT_FRAMEWORK_QUESTIONS.index(r.question) == idx), None)
-                            if match:
-                                merged.append(match)
-                    from storage.writer import write_jsonl
-                    await loop.run_in_executor(None, lambda: write_jsonl(merged, out_path))
+                    await loop.run_in_executor(None, lambda: _persist_records(out_path, new_records))
                 except Exception as exc:
                     log.warning("Persist failed for %s/%s: %s", alias, paper_id, exc)
 

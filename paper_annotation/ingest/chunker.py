@@ -63,6 +63,8 @@ def chunk_text(paper_id: str, pages: Iterable[PageText], chunk_size: int, chunk_
             )
         )
         index += 1
+        if end >= len(full_text):
+            break  # final chunk reached; don't emit an overlap-only tail chunk
         next_start = end - chunk_overlap
         if next_start <= start:
             logging.warning("Chunker detected no forward progress at index %s; stopping.", index)

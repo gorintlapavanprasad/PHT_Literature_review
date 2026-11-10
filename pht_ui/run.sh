@@ -4,7 +4,7 @@
 # Assumes:
 #   - your paper_annotation/.env has OPENAI_API_KEY, GEMINI_API_KEY, HF_TOKEN set
 #   - the repo structure is:
-#       <root>/literature-review-worker-model-main/paper_annotation/...
+#       <root>/paper_annotation/...
 #       <root>/pht_ui/backend/server.py
 #       <root>/pht_ui/frontend/index.html
 #

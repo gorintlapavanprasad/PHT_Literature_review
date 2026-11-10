@@ -94,7 +94,7 @@ def main(paper_id: str = "ahmetovic21") -> int:
 
     # Sanity: UI expects 4 models in a stable order
     aliases = [m["alias"] for m in meta["models"]]
-    if aliases != ["openai", "gemini", "llama", "mistral"]:
+    if aliases != ["openai", "gemini", "groq", "mistral"]:
         fail(f"unexpected model order: {aliases}")
         failures += 1
     else:
@@ -167,7 +167,7 @@ def main(paper_id: str = "ahmetovic21") -> int:
 
     for qi in range(expected_questions):
         answers = []
-        for alias in ["openai", "gemini", "llama", "mistral"]:
+        for alias in ["openai", "gemini", "groq", "mistral"]:
             rec = normalized.get(alias, {}).get(qi)
             if rec and isinstance(rec.get("answer"), int):
                 answers.append(rec["answer"])
