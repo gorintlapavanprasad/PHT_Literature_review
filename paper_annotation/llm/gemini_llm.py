@@ -34,11 +34,30 @@ class GeminiSettings:
     max_tokens: int | None = None
 
 
+def gemini_accepts_sampling(model: str) -> bool:
+    """Gemini 3.x and newer reject temperature/top_p/top_k (Google's migration notes); 2.x and older accept them.
+
+    Override with env GEMINI_SEND_TEMPERATURE=1/0. Unknown model names are assumed to accept it, and the
+    request is retried once without it if the API says otherwise (see GeminiLLM.generate).
+    """
+    import os
+    import re
+
+    forced = os.getenv("GEMINI_SEND_TEMPERATURE", "").strip().lower()
+    if forced in ("1", "true", "yes"):
+        return True
+    if forced in ("0", "false", "no"):
+        return False
+    m = re.search(r"gemini-(\d+)", model or "")
+    return True if not m else int(m.group(1)) <= 2
+
+
 class GeminiLLM(BaseLLM):
     """Gemini LLM wrapper."""
 
     def __init__(self, settings: GeminiSettings) -> None:
         self.settings = settings
+        self._send_temperature = gemini_accepts_sampling(settings.model)
         self._client = genai.Client(api_key=settings.api_key)
 
     def _validate(self, payload: dict) -> Optional[Dict]:
@@ -136,10 +155,13 @@ class GeminiLLM(BaseLLM):
             return None
 
     def _call_gemini(self, prompt: str) -> str:
+        kwargs = {}
+        if self._send_temperature:
+            kwargs["temperature"] = self.settings.temperature
         generation_config = types.GenerateContentConfig(
-            temperature=self.settings.temperature,
             response_mime_type="application/json",
             response_schema=LLMResponse,
+            **kwargs,
         )
         if self.settings.max_tokens is not None:
             generation_config.max_output_tokens = self.settings.max_tokens
@@ -164,7 +186,10 @@ class GeminiLLM(BaseLLM):
             try:
                 content = self._call_gemini(prompt)
                 break
-            except Exception:
+            except Exception as exc:
+                if self._send_temperature and "temperature" in str(exc).lower():
+                    self._send_temperature = False   # model rejects sampling params: retry without
+                    continue
                 if attempt == max_attempts:
                     raise
                 delay = base_delay * (2 ** (attempt - 1)) + random.random()

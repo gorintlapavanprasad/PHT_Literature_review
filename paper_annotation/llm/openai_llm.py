@@ -38,6 +38,7 @@ class OpenAILLM(BaseLLM):
         self._client = OpenAI(api_key=settings.api_key)
         self._model_name = settings.model_name
         self._temperature = settings.temperature
+        self._send_temperature = True   # switched off automatically if the model rejects it
 
     def _parse(self, content: str) -> Optional[Dict]:
         try:
@@ -48,11 +49,12 @@ class OpenAILLM(BaseLLM):
             return None
 
     def _call_openai(self, prompt: str) -> str:
+        kwargs = {"temperature": self._temperature} if self._send_temperature else {}
         response = self._client.chat.completions.create(
             model=self._model_name,
-            temperature=self._temperature,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
+            **kwargs,
         )
         return response.choices[0].message.content or ""
 
@@ -66,7 +68,10 @@ class OpenAILLM(BaseLLM):
             try:
                 content = self._call_openai(prompt)
                 break
-            except BadRequestError:
+            except BadRequestError as exc:
+                if self._send_temperature and "temperature" in str(exc).lower():
+                    self._send_temperature = False   # newer reasoning models only accept the default
+                    continue
                 raise
             except (RateLimitError, APITimeoutError, APIConnectionError) as exc:
                 if attempt == max_attempts:
