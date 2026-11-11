@@ -44,6 +44,9 @@ class HybridRetriever:
         self._embedding_service = embedding_service
         self._lexical_top_k = lexical_top_k
         self._chunk_tokens = [set(_tokenize(c.text)) for c in embedded.chunks]
+        # Read all vectors out of FAISS once. reconstruct() per candidate per question was the slow part.
+        n = embedded.index.ntotal
+        self._vectors = embedded.index.reconstruct_n(0, n) if n else np.zeros((0, 0), dtype=np.float32)
 
     def _lexical_candidates(self, query: str) -> List[int]:
         query_tokens = set(_tokenize(query))
@@ -64,11 +67,8 @@ class HybridRetriever:
             chunks = [self._embedded.chunks[i] for i in indices[0] if i >= 0]
             return RetrievalResult(query=query, chunks=chunks)
 
-        distances: List[tuple[int, float]] = []
-        for idx in candidate_indices:
-            vector = self._embedded.index.reconstruct(idx)
-            distance = float(np.linalg.norm(vector - query_embedding))
-            distances.append((idx, distance))
+        dist = np.linalg.norm(self._vectors[candidate_indices] - query_embedding.reshape(1, -1), axis=1)
+        distances: List[tuple[int, float]] = [(idx, float(d)) for idx, d in zip(candidate_indices, dist)]
         distances.sort(key=lambda item: (item[1], self._embedded.chunks[item[0]].chunk_id))
         top_indices = [idx for idx, _ in distances[:top_k]]
         if len(top_indices) < top_k:
