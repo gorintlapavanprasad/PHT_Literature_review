@@ -244,14 +244,18 @@ def build_prompt(question: str, chunks: List[TextChunk], question_index: int | N
     return "\n\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# NOTE: build_forced_choice_prompt has been deliberately removed.
-#
-# Shelby Hagemann's analysis (April 2026) showed that forced_choice decisions
-# correlate with inaccuracy: models asked to guess when evidence is absent
-# produce plausible-but-wrong answers with inflated confidence. This is the
-# exact hallucination pattern warned about in the CS 599 LLM lecture (lec. 22).
-#
-# The pipeline now treats "Unknown" and "Not Applicable" as valid, honest
-# answers. They are surfaced in the UI rather than hidden behind a forced guess.
-# ---------------------------------------------------------------------------
+_FORCED_CHOICE_SUFFIX = (
+    "FORCED CHOICE: the earlier passes could not settle this question. You MUST now pick the single best-fitting "
+    "option from 1 to 5, even if the evidence is weak, and say in the reasoning that this is a best-fit choice. "
+    "Do not answer \"Unknown\" or \"Not Applicable\"."
+)
+
+
+def build_forced_choice_prompt(question: str, chunks: List[TextChunk], question_index: int | None = None) -> str:
+    """Same prompt as build_prompt, plus an instruction to commit to a 1-5 answer.
+
+    OFF by default. The paper's original (v1) pipeline did this and its analysis found forced answers are the
+    least accurate; the v2 pipeline keeps "Unknown" instead. This exists only so the two can be compared as an
+    ablation (config FORCED_CHOICE=1, issue #24).
+    """
+    return build_prompt(question, chunks, question_index=question_index) + "\n\n" + _FORCED_CHOICE_SUFFIX

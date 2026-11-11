@@ -22,7 +22,7 @@ import re
 from typing import List
 
 from llm.base import BaseLLM
-from llm.prompts import build_prompt
+from llm.prompts import build_prompt, build_forced_choice_prompt
 import numpy as np
 
 from retrieval.retriever import HybridRetriever
@@ -127,6 +127,7 @@ def annotate_question(
     top_k: int,
     question_index: int | None = None,
     max_expansions: int = 1,
+    force_choice: bool = False,
 ) -> AnnotationRecord:
     """Annotate a single question for a paper.
 
@@ -202,6 +203,16 @@ def annotate_question(
             else:
                 pass  # exhausted expansions: decision_mode stays "unresolved" (honest Unknown)
 
+    # Optional v1 behaviour (ablation only): still Unknown after every pass -> make the model pick a best fit.
+    if force_choice and decision_mode == "unresolved":
+        forced_raw = llm.generate(build_forced_choice_prompt(question, selected_chunks, question_index=question_index))
+        passes += 1
+        forced_response = _parse_llm_response(forced_raw)
+        total_latency += float(forced_response.get("latency_seconds", 0.0))
+        if _is_resolved(_normalize_answer(forced_response.get("answer"))):
+            response = forced_response
+            decision_mode = "forced_choice"
+
     # Extract final fields.
     answer = _normalize_answer(response.get("answer"))
     try:
@@ -217,6 +228,8 @@ def annotate_question(
     # An honest Unknown doesn't need evidence.
     if _is_resolved(answer):
         confidence = _penalize_confidence(confidence, evidence)
+        if decision_mode == "forced_choice":
+            confidence = min(confidence, 0.6)   # a guess must not look as sure as a grounded answer
     else:
         # For Unknown / Not Applicable, confidence is about the model's
         # certainty that the answer can't be produced. Leave it alone.

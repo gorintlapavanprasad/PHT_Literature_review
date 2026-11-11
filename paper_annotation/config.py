@@ -18,6 +18,7 @@ PIPELINE_CONFIG = {
     "lexical_top_k": 50,
     "max_expansions": 2,
     "provider_concurrency": 3,
+    "force_choice": False,
     "max_concurrency": 1,
     "ingest_concurrency": 2,
 }
@@ -153,6 +154,7 @@ class Config:
     lexical_top_k: int
     max_expansions: int
     provider_concurrency: int
+    force_choice: bool
     max_concurrency: int
     ingest_concurrency: int
     model_name: str
@@ -194,6 +196,7 @@ def load_config() -> Config:
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", str(PIPELINE_CONFIG["chunk_overlap"]))),
         top_k=int(os.getenv("TOP_K", str(PIPELINE_CONFIG.get("top_k")))),
         lexical_top_k=int(os.getenv("LEXICAL_TOP_K", str(PIPELINE_CONFIG.get("lexical_top_k")))),
+        force_choice=os.getenv("FORCED_CHOICE", "").strip().lower() in ("1", "true", "yes"),
         provider_concurrency=int(os.getenv("PROVIDER_CONCURRENCY", str(PIPELINE_CONFIG["provider_concurrency"]))),
         max_expansions=int(os.getenv("MAX_EXPANSIONS", str(PIPELINE_CONFIG["max_expansions"]))),
         max_concurrency=int(os.getenv("MAX_CONCURRENCY", str(PIPELINE_CONFIG.get("max_concurrency")))),

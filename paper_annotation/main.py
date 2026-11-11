@@ -273,6 +273,7 @@ def annotate_paper(
             top_k=config.top_k,
             question_index=q_index,
             max_expansions=config.max_expansions,
+            force_choice=config.force_choice,
         )
 
     return run_bounded(question_payloads, _worker, max_workers=config.max_concurrency)

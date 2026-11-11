@@ -427,6 +427,7 @@ async def stream_annotation(paper_id: str):
                             top_k=cfg.top_k,
                             question_index=qi,
                             max_expansions=cfg.max_expansions,
+                            force_choice=cfg.force_choice,
                         ),
                     )
                 except Exception as exc:

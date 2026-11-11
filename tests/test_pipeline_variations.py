@@ -210,3 +210,45 @@ def test_passes_field_counts_llm_calls(script, max_exp, passes, make_pdf, cfg, f
     llm = ScriptedLLM(script)
     rec = _ask_exp(emb, retr, fake_embedder, llm, max_exp)
     assert rec.passes == passes == llm.calls
+
+
+# ---------------------------------------------------------------- opt-in forced choice (issue #24, ablation only)
+def _ask_forced(emb, retr, svc, llm, force, max_exp=1, top_k=5):
+    return annotate_question("p", emb, retr, QS[0], svc.embed_query(QS[0]), llm, "m", "v", top_k, 0,
+                             max_expansions=max_exp, force_choice=force)
+
+
+def test_forced_choice_is_off_by_default(make_pdf, cfg, fake_embedder):
+    emb, retr = _embedded(make_pdf, cfg, fake_embedder, "long_25pages")
+    llm = ScriptedLLM([llm_json("Unknown")])
+    rec = _ask_forced(emb, retr, fake_embedder, llm, force=False)
+    assert rec.answer == "Unknown" and rec.decision_mode == "unresolved" and llm.calls == 2
+
+
+def test_forced_choice_makes_the_model_commit_and_caps_confidence(make_pdf, cfg, fake_embedder):
+    emb, retr = _embedded(make_pdf, cfg, fake_embedder, "long_25pages")
+    llm = ScriptedLLM([llm_json("Unknown"), llm_json("Unknown"), llm_json(4, confidence=0.95)])
+    rec = _ask_forced(emb, retr, fake_embedder, llm, force=True)
+    assert rec.answer == 4 and rec.decision_mode == "forced_choice"
+    assert rec.confidence <= 0.6 and rec.passes == 3 == llm.calls
+
+
+def test_forced_choice_only_runs_when_still_unresolved(make_pdf, cfg, fake_embedder):
+    emb, retr = _embedded(make_pdf, cfg, fake_embedder, "long_25pages")
+    llm = ScriptedLLM([llm_json("Unknown"), llm_json(2)])
+    rec = _ask_forced(emb, retr, fake_embedder, llm, force=True)
+    assert rec.decision_mode == "expanded_retry" and llm.calls == 2      # no extra forced call
+
+
+def test_forced_choice_that_still_says_unknown_stays_unresolved(make_pdf, cfg, fake_embedder):
+    emb, retr = _embedded(make_pdf, cfg, fake_embedder, "long_25pages")
+    rec = _ask_forced(emb, retr, fake_embedder, ScriptedLLM([llm_json("Unknown")]), force=True)
+    assert rec.answer == "Unknown" and rec.decision_mode == "unresolved"
+
+
+def test_forced_prompt_adds_instruction_but_default_prompt_does_not(make_pdf, cfg, fake_embedder):
+    from llm.prompts import build_forced_choice_prompt, build_prompt
+    emb, _ = _embedded(make_pdf, cfg, fake_embedder, "short_1page")
+    base = build_prompt(QS[0], emb.chunks, 0)
+    forced = build_forced_choice_prompt(QS[0], emb.chunks, 0)
+    assert "FORCED CHOICE" in forced and "FORCED CHOICE" not in base and forced.startswith(base)
