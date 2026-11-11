@@ -68,6 +68,18 @@ EXTRA_MODELS = {
 }
 
 
+# Environment variable that holds the credential for each provider (never print the values).
+PROVIDER_KEYS = {
+    "anthropic": ["ANTHROPIC_API_KEY"],
+    "openai": ["OPENAI_API_KEY"],
+    "gemini": ["GEMINI_API_KEY"],
+    "groq": ["GROQ_API_KEY"],
+    "mistral": ["MISTRAL_API_KEY"],
+    "huggingface": ["HF_TOKEN"],
+    "compat": ["COMPAT_API_KEY", "COMPAT_BASE_URL"],
+}
+
+
 def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
