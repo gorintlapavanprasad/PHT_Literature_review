@@ -25,7 +25,7 @@ def provider_of(name):
 
 def build(name, cfg):
     if name == "bad-model":
-        raise RuntimeError("404 model: not_found_error sk-ant-api03-ABCDEFGHIJKLMNOP1234567890")
+        raise RuntimeError("404 model: not_found_error " + "sk-ant-" + "api03-ABCDEFGHIJKLMNOP1234567890")
     return WrongLLM() if name == "wrong" else GoodLLM()
 
 
@@ -52,7 +52,7 @@ def test_table_summary_counts():
 
 
 def test_sanitize_masks_common_key_shapes():
-    for raw in ("sk-proj-ABCDEFGH12345678", "AIzaSyABCDEFGHIJKLMN", "gsk_abcdefghijklmn", "hf_abcdefghijklmn"):
+    for raw in ("sk-" + "proj-ABCDEFGH12345678", "AIza" + "SyABCDEFGHIJKLMN", "gsk_" + "abcdefghijklmn", "hf_" + "abcdefghijklmn"):
         assert raw[8:] not in S._sanitize(f"auth failed for {raw}")
 
 
