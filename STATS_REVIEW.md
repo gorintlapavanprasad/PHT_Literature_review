@@ -1,6 +1,6 @@
 # Statistics review: do the tests fit the data types?
 
-_Requested in the team meeting ("have Claude Code review whether these tests suit the data types, and rerun if not")._
+_Requested in the team meeting: review whether the tests suit the data types, and rerun if not._
 _Status: methods reviewed and implemented + unit-tested on synthetic data with known answers. **Not yet re-run on the real
 results**, because the human consensus file is not on this machine - one command re-runs everything once it is:_
 `cd paper_annotation && python -m evaluation.report --human <consensus.csv> --out ../reports`
