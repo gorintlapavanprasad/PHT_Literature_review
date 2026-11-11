@@ -77,12 +77,23 @@ def load_results(
                     "decision_mode": r.get("decision_mode"),
                     "prompt_version": r.get("prompt_version"),
                     "n_evidence": len(r.get("evidence") or []),
+                    "passes": r.get("passes", np.nan),   # absent in records written before 2026-11
                 })
     df = pd.DataFrame(rows, columns=[
         "paper_id", "provider", "model_name", "q", "answer", "answer_num",
-        "confidence", "decision_mode", "prompt_version", "n_evidence"])
+        "confidence", "decision_mode", "prompt_version", "n_evidence", "passes"])
     # one record per (paper, provider, question): keep the last written
     return df.drop_duplicates(["paper_id", "provider", "q"], keep="last").reset_index(drop=True)
+
+
+# Effort ordering used for trend tests. full_context is NOT on this scale: it is decided by paper
+# length (<=30 chunks), not by how hard the model had to search, so it is analysed as its own stratum.
+EFFORT_RANK = {"retrieval": 1, "expanded_retry": 2, "forced_choice": 3, "unresolved": 3}
+
+
+def effort_rank(df: pd.DataFrame) -> pd.Series:
+    """Ordinal effort (1 = first retrieval pass sufficed ... 3 = all passes exhausted); NaN for full_context/N-A."""
+    return df["decision_mode"].map(EFFORT_RANK)
 
 
 def load_human_tidy(csv_path: Path) -> pd.DataFrame:

@@ -1,7 +1,7 @@
 """Concurrency utilities."""
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import threading
 from typing import Callable, Iterable, List, TypeVar
@@ -36,7 +36,7 @@ def run_bounded(
     results: List[R] = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(_wrapped, item) for item in items]
-        for future in as_completed(futures):
+        for future in futures:  # input order (not completion order) so outputs are deterministic
             results.append(future.result())
     return results
 

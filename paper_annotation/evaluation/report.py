@@ -18,6 +18,8 @@ for p in (str(HERE), str(HERE.parent)):
         sys.path.insert(0, p)
 
 from evaluation import analysis as A  # noqa: E402
+from evaluation import robust as R  # noqa: E402
+from evaluation import trust as T  # noqa: E402
 from questions import PHT_FRAMEWORK_QUESTIONS  # noqa: E402
 
 
@@ -86,6 +88,45 @@ def build_report(results_dir: Path, out_dir: Path, human_csv: Path | None = None
         mc = A.mode_comparisons(df, "diff")
         mc.to_csv(out_dir / "mode_comparisons.csv", index=False)
         lines += ["### Rank-biserial between modes (>0: first mode has larger error)", _md(mc.set_index(["a", "b"]) if len(mc) else mc, ".4f"), ""]
+
+        # ---- statistics matched to the data types (see STATS_REVIEW.md) ----------------------------
+        rs = R.robust_summary(df, n_boot=300)
+        lines += ["## Robust statistics (paper-level cluster bootstrap, 95% CI)",
+                  "| provider | accuracy [CI] | chance acc. | QWK [CI] |", "|---|---|---|---|"]
+        for prov, v in rs["per_model"].items():
+            a, k = v["accuracy"], v["qwk"]
+            lines.append(f"| {prov} | {a['estimate']:.3f} [{a['lo']:.3f}, {a['hi']:.3f}] | {v['chance_accuracy']:.3f} "
+                         f"| {k['estimate']:.3f} [{k['lo']:.3f}, {k['hi']:.3f}] |")
+        ev, cv = rs["effort_vs_error"], rs["confidence_vs_error"]
+        lines += ["", f"- Effort vs |model-human| (Spearman, retrieval < expanded < forced): rho={ev['spearman_rho']:.3f} "
+                      f"[{ev['rho_ci_lo']:.3f}, {ev['rho_ci_hi']:.3f}], n={ev['n']}",
+                  f"- Confidence vs |model-human| (Spearman): rho={cv['spearman_rho']:.3f} [{cv['rho_ci_lo']:.3f}, {cv['rho_ci_hi']:.3f}]",
+                  f"- Kruskal-Wallis effect size (epsilon^2), decision mode vs error: {rs['kruskal_epsilon_squared_mode_vs_error']:.4f}",
+                  "- Krippendorff alpha (ordinal): " + ", ".join(f"{k}={v:.3f}" for k, v in rs["krippendorff_alpha"].items()), ""]
+        sq = R.signal_quality(df, n_boot=150)
+        sq.to_csv(out_dir / "signal_quality.csv", index=False)
+        lines += ["### Can the signals tell good answers from bad ones? (AUROC, 0.5 = useless)", _md(sq.set_index(["signal", "predicts"])), ""]
+        pm = R.pairwise_mcnemar(df)
+        pm.to_csv(out_dir / "mcnemar_models.csv", index=False)
+        lines += ["### Paired comparison of models (exact McNemar, Holm-adjusted)", _md(pm.set_index(["a", "b"]) if len(pm) else pm, ".4f"), ""]
+
+        # ---- trust score -------------------------------------------------------------------------
+        if df["answer_num"].notna().sum() >= 50:
+            tev = T.evaluate_signals(df, "near")
+            scored = T.cross_validated_trust(df, "near")
+            tt = T.tiers(scored)
+            tt.to_csv(out_dir / "trust_tiers.csv")
+            T.fit_trust(df, "near").save(out_dir / "trust_model.json")
+            lines += ["## Trust score (effort + confidence -> P(answer within 1 of the human))",
+                      f"Out-of-fold AUROC: combined={tev['auroc_trust']:.3f}, confidence only={tev['auroc_confidence_only']:.3f}, "
+                      f"effort only={tev['auroc_effort_only']:.3f}; base rate within-1={tev['base_rate']:.3f}; ECE={tev['ece_trust']:.3f}",
+                      "", _md(tt), "",
+                      "Review plan (send the least-trusted answers to humans):"]
+            for frac in (0.1, 0.25, 0.5):
+                rp = T.review_plan(scored, frac)
+                lines.append(f"- review {frac:.0%}: auto-accepted answers are within-1 {rp['auto_accept_within_1']:.3f} "
+                             f"(overall {rp['overall_within_1']:.3f}), exact {rp['auto_accept_exact']:.3f} (overall {rp['overall_exact']:.3f})")
+            lines.append("")
 
         ens = pd.concat([A.ensemble(df, m) for m in ("median", "mode", "conf_weighted")])
         ens = A.attach_human(ens, df[["paper_id", "q", "human"]].drop_duplicates())

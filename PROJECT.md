@@ -140,3 +140,40 @@ v2 pipeline has barely been run. The UI therefore mostly shows the data the team
 **Result available now (no human labels needed):** models agree with each other at quadratic kappa 0.47-0.67 (exact match 29-55 %), i.e. they are consistent with one another even though the paper finds them nearly uncorrelated with the human coders. See `reports/`.
 
 **Blocked on the user:** human consensus CSV, API keys, GPU/provider account for fine-tuning, and a decision on pushing this repo / creating a hosted deployment (nothing has been pushed or created in any cloud account).
+
+
+## 11. Update 2026-11-10 (after the team meeting)
+
+**Direction (from the meeting):** the contribution is the *pipeline and its supporting evidence* (how researchers decide whether to
+trust an LLM answer), not model training. Training/fine-tuning is therefore a **later, optional step**:
+`training/stacker.py` and `training/export_finetune.py` are kept but nothing in the paper's main path depends on them.
+
+| Meeting item | What was done |
+|---|---|
+| Review statistics vs data types, rerun if needed | `STATS_REVIEW.md`; `evaluation/robust.py` (cluster bootstrap, rank/trend tests, AUROC, McNemar+Holm, Krippendorff alpha, epsilon^2). Re-run on real data needs the human CSV |
+| Table 1 repeats options | `python scripts/make_table1.py` regenerates it from `questions.py` -> `docs/table1.md`, `docs/table1.tex` (verified: 8 questions x 5 distinct options) |
+| Turn effort + confidence into an interpretable signal | `evaluation/trust.py`: trust score, High/Medium/Low tiers, review plan; `passes` (number of LLM calls) now stored per answer |
+| Rerun with newer models, incl. Claude (tokens available ~4-5 days) | `llm/anthropic_llm.py` (claude-sonnet-5-5, claude-opus-5-5, claude-haiku-5-5), `llm/compat_llm.py` for newer Llama / Mistral / Gemma on any OpenAI-compatible host. Opt-in only: never run by default |
+| Parallelize runs | `pipeline/runner.py`: providers run side by side, per-provider cap (`PROVIDER_CONCURRENCY`, default 3), failed jobs are reported not fatal; finished results are skipped on re-run |
+| Old API keys belonged to a previous developer's personal accounts | needs new lab-owned keys (see below). Keys live only in `paper_annotation/.env` (git-ignored) |
+
+**Running the Claude comparison (after setting `ANTHROPIC_API_KEY` in `paper_annotation/.env`):**
+```bash
+cd paper_annotation
+python main.py --stage all --model claude-haiku-5-5        # cheap pilot first (put 20 PDFs in ../papers)
+python main.py --stage all --model claude                  # sonnet-5-5 + opus-5-5 + haiku-5-5
+ANTHROPIC_EFFORT=high python main.py --model claude-opus-5-5
+```
+Each model writes to its own folder (`data/results/anthropic_claude_sonnet_5_5/` ...), so runs never mix. Claude 5.x models do not
+accept a custom `temperature`, so none is sent. Effort (`ANTHROPIC_EFFORT`, default `medium`) is the cost/quality lever.
+
+**Rough cost for the full 217 papers x 8 questions (about 2,100 calls per model incl. retries; estimate, +-2x):**
+Haiku 5.5 about $3, Sonnet 5.5 about $60, Opus 5.5 about $115, at list prices cached on 2026-11-03 (check current pricing). Run Haiku on 20 papers
+first and extrapolate before launching the larger runs.
+
+**Newer Llama / Mistral / Gemma:** set `COMPAT_BASE_URL`, `COMPAT_API_KEY`, `COMPAT_MODELS` (see `pht_ui/.env.example`), then
+`python main.py --model compat`. Model IDs depend on the host and were not verified here.
+
+**Bugs fixed in this round:** unknown models used to write into the `openai/` results folder (now each model has its own folder, unknown
+models raise); `run_bounded` returned results in completion order (now input order); a full-context "Not Applicable" answer was
+labelled `unresolved`.

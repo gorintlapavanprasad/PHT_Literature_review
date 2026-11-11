@@ -52,6 +52,7 @@ class AnnotationRecord:
     decision_mode: str
     latency: float
     timestamp: str
+    passes: int = 1  # number of LLM calls needed (the model's 'effort'): 1 = first pass sufficed
 
 
 def _penalize_confidence(confidence: float, evidence: List[str]) -> float:
@@ -138,6 +139,7 @@ def annotate_question(
     """
     total_chunks = len(embedded.chunks)
     total_latency = 0.0
+    passes = 0
     decision_mode = "unresolved"
 
     if total_chunks <= _FULL_CONTEXT_CHUNK_THRESHOLD:
@@ -145,6 +147,7 @@ def annotate_question(
         selected_chunks = embedded.chunks
         prompt = build_prompt(question, selected_chunks, question_index=question_index)
         raw = llm.generate(prompt)
+        passes += 1
         response = _parse_llm_response(raw)
         total_latency += float(response.get("latency_seconds", 0.0))
         full_answer = _normalize_answer(response.get("answer"))
@@ -162,6 +165,7 @@ def annotate_question(
         selected_chunks = retrieval.chunks
         prompt = build_prompt(question, selected_chunks, question_index=question_index)
         raw = llm.generate(prompt)
+        passes += 1
         response = _parse_llm_response(raw)
         total_latency += float(response.get("latency_seconds", 0.0))
 
@@ -183,6 +187,7 @@ def annotate_question(
                     query=question, query_embedding=query_embedding, top_k=current_k
                 ).chunks
                 retry_raw = llm.generate(build_prompt(question, retry_chunks, question_index=question_index))
+                passes += 1
                 retry_response = _parse_llm_response(retry_raw)
                 total_latency += float(retry_response.get("latency_seconds", 0.0))
                 retry_answer = _normalize_answer(retry_response.get("answer"))
@@ -243,6 +248,7 @@ def annotate_question(
         decision_mode=decision_mode,
         latency=latency,
         timestamp=datetime.now(timezone.utc).isoformat(),
+        passes=passes,
     )
 
 

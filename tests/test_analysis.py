@@ -163,9 +163,11 @@ def test_report_with_and_without_human(tmp_path, data):
     human.to_csv(tmp_path / "h.csv", index=False)
     r2 = build_report(tmp_path / "res", tmp_path / "o2", tmp_path / "h.csv")
     txt = r2.read_text(encoding="utf-8")
-    for s in ("Overall vs human", "Kruskal-Wallis", "Dunn", "Ensembles", "Selective prediction"):
+    for s in ("Overall vs human", "Kruskal-Wallis", "Dunn", "Ensembles", "Selective prediction",
+              "Robust statistics", "Krippendorff", "McNemar", "Trust score", "Review plan"):
         assert s in txt
     assert (tmp_path / "o2" / "qwk_by_question.csv").exists()
+    assert (tmp_path / "o2" / "trust_model.json").exists() and (tmp_path / "o2" / "signal_quality.csv").exists()
 
 
 def test_report_bad_human_ids_fail_clearly(tmp_path, data):

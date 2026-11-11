@@ -197,3 +197,16 @@ def test_full_context_not_applicable_mode(make_pdf, cfg, fake_embedder):
     emb, retr = _embedded(make_pdf, cfg, fake_embedder, "short_1page")
     rec = _ask(emb, retr, fake_embedder, ScriptedLLM([llm_json("Not Applicable")]))
     assert rec.decision_mode == "not_applicable"
+
+
+@pytest.mark.parametrize("script,max_exp,passes", [
+    ([llm_json(3)], 2, 1),
+    ([llm_json("Unknown"), llm_json(4)], 2, 2),
+    ([llm_json("Unknown"), llm_json("Unknown"), llm_json(4)], 2, 3),
+    ([llm_json("Unknown")], 2, 3),
+])
+def test_passes_field_counts_llm_calls(script, max_exp, passes, make_pdf, cfg, fake_embedder):
+    emb, retr = _embedded(make_pdf, cfg, fake_embedder, "long_25pages")
+    llm = ScriptedLLM(script)
+    rec = _ask_exp(emb, retr, fake_embedder, llm, max_exp)
+    assert rec.passes == passes == llm.calls

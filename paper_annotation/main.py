@@ -10,7 +10,7 @@ import numpy as np
 
 from dotenv import load_dotenv
 
-from config import load_config, Config, MODELS, all_models, model_output_dir, model_provider
+from config import load_config, Config, MODELS, EXTRA_MODELS, all_models, selectable_models, model_output_dir, model_provider
 from ingest.pdf_loader import load_pdf_text, PageText
 from ingest.text_cleaner import clean_text
 from ingest.chunker import chunk_text
@@ -21,6 +21,7 @@ from llm.openai_llm import OpenAILLM, OpenAISettings
 from llm.huggingface_llm import HuggingFaceLLM, HuggingFaceSettings
 from pipeline.annotate import annotate_question, AnnotationRecord
 from pipeline.concurrency import run_bounded
+from pipeline.runner import run_jobs
 from storage.writer import write_jsonl
 from retrieval.retriever import HybridRetriever
 from questions import PHT_FRAMEWORK_QUESTIONS
@@ -62,29 +63,34 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _resolve_models(requested: list[str] | None, configured_models: list[str]) -> list[str]:
-    """Resolve CLI selectors into concrete configured model names."""
+def _resolve_models(requested: list[str] | None, configured_models: list[str],
+                    selectable_models_: list[str] | None = None) -> list[str]:
+    """Resolve CLI selectors into concrete model names.
+
+    No selector -> the default (paper) models. Selectors may be exact names or aliases;
+    opt-in models (Claude / OpenAI-compatible) are accepted but never run by default.
+    """
     if not requested:
         return configured_models
-
+    allowed = selectable_models_ or configured_models
     alias_map = {
         "openai":  MODELS["openai"],
         "gemini":  MODELS["gemini"],
         "groq":    MODELS.get("groq", []),
         "mistral": MODELS.get("mistral", []),
+        "claude":  EXTRA_MODELS["anthropic"],
+        "compat":  EXTRA_MODELS["compat"],
         # Legacy aliases for backwards compatibility with older scripts.
         "llama":   [m for m in MODELS.get("groq", []) if "llama" in m.lower()]
                    + [m for m in MODELS["huggingface"] if "llama" in m.lower()],
     }
-
     resolved: list[str] = []
     for selector in requested:
-        selected_models = alias_map.get(selector, [selector])
-        for model_name in selected_models:
-            if model_name not in configured_models:
+        for model_name in alias_map.get(selector, [selector]):
+            if model_name not in allowed:
                 raise SystemExit(
-                    f"Unsupported model '{selector}'. Supported models: {', '.join(configured_models)}. "
-                    "Aliases: openai, llama, mistral, gemini"
+                    f"Unsupported model '{selector}'. Supported models: {', '.join(allowed)}. "
+                    "Aliases: openai, gemini, groq, mistral, llama, claude, compat"
                 )
             if model_name not in resolved:
                 resolved.append(model_name)
@@ -141,6 +147,22 @@ def _build_llm(model_name: str, config: Config) -> BaseLLM:
                 temperature=config.temperature,
             )
         )
+    if provider == "anthropic":
+        from llm.anthropic_llm import AnthropicLLM, AnthropicSettings
+
+        if not config.anthropic_api_key:
+            raise EnvironmentError("ANTHROPIC_API_KEY is required for Claude models.")
+        logging.info("Running Claude model: %s", model_name)
+        return AnthropicLLM(AnthropicSettings(api_key=config.anthropic_api_key, model_name=model_name,
+                                              temperature=config.temperature))
+    if provider == "compat":
+        from llm.compat_llm import CompatLLM, CompatSettings
+
+        if not (config.compat_api_key and config.compat_base_url):
+            raise EnvironmentError("COMPAT_API_KEY and COMPAT_BASE_URL are required for compat models.")
+        logging.info("Running OpenAI-compatible model: %s @ %s", model_name, config.compat_base_url)
+        return CompatLLM(CompatSettings(api_key=config.compat_api_key, base_url=config.compat_base_url,
+                                        model_name=model_name, temperature=config.temperature))
     if provider == "gemini":
         from llm.gemini_llm import GeminiLLM, GeminiSettings
 
@@ -297,32 +319,47 @@ if __name__ == "__main__":
         question_embeddings = embedding_service.embed_queries(questions)
 
         configured_models = all_models()
-        models_to_run = _resolve_models(args.model, configured_models)
+        models_to_run = _resolve_models(args.model, configured_models, selectable_models())
         llms = {model_name: _build_llm(model_name, config) for model_name in models_to_run}
         logging.info("Models selected: %s", ", ".join(models_to_run))
 
+        jobs = []
         for pdf_path in pdfs:
             paper_id = _paper_id_from_path(pdf_path)
-            logging.info("Processing paper: %s", paper_id)
             for model_name in models_to_run:
-                model_dir = model_output_dir(model_name)
-                output_path = config.results_dir / model_dir / f"{paper_id}.jsonl"
+                output_path = config.results_dir / model_output_dir(model_name) / f"{paper_id}.jsonl"
                 if output_path.exists():
                     logging.info("Skipping %s for %s (results already exist)", model_name, paper_id)
                     continue
+                jobs.append((pdf_path, model_name, output_path))
 
-                logging.info("Running annotation using %s for %s", model_name, paper_id)
-                records = annotate_paper(
-                    pdf_path=pdf_path,
-                    questions=questions,
-                    question_embeddings=question_embeddings,
-                    llm=llms[model_name],
-                    embedding_service=embedding_service,
-                    config=config,
-                    model_name=model_name,
-                )
-                write_jsonl(records, output_path)
-                logging.info("Wrote results to %s", output_path)
+        def _annotate_job(job) -> None:
+            pdf_path, model_name, output_path = job
+            logging.info("Running annotation using %s for %s", model_name, pdf_path.stem)
+            records = annotate_paper(
+                pdf_path=pdf_path,
+                questions=questions,
+                question_embeddings=question_embeddings,
+                llm=llms[model_name],
+                embedding_service=embedding_service,
+                config=config,
+                model_name=model_name,
+            )
+            write_jsonl(records, output_path)
+            logging.info("Wrote results to %s", output_path)
+
+        summary = run_jobs(
+            jobs,
+            _annotate_job,
+            provider_of=lambda j: model_provider(j[1]),
+            per_provider_limit=config.provider_concurrency,
+        )
+        logging.info(
+            "Annotation jobs: %d ok, %d failed in %.1fs (peak concurrency per provider: %s)",
+            len(summary.succeeded), len(summary.failed), summary.seconds, summary.peak_concurrency,
+        )
+        for job, err in summary.failed:
+            logging.error("FAILED %s / %s: %s", job[0].stem, job[1], err)
 
         logging.info("Annotation stage complete.")
 
