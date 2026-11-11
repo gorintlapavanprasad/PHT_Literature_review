@@ -57,7 +57,7 @@ def test_default_models_exclude_opt_in_claude():
 
 def test_claude_alias_and_exact_names():
     sel = config.selectable_models()
-    assert pipeline_main._resolve_models(["claude"], config.all_models(), sel) == config.EXTRA_MODELS["anthropic"]
+    assert set(pipeline_main._resolve_models(["claude"], config.all_models(), sel)) == {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
     assert pipeline_main._resolve_models(["claude-opus-5-5"], config.all_models(), sel) == ["claude-opus-5-5"]
     with pytest.raises(SystemExit):
         pipeline_main._resolve_models(["claude-opus-5-5"], config.all_models())   # not in the default list

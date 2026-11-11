@@ -10,6 +10,7 @@ import numpy as np
 
 from dotenv import load_dotenv
 
+from llm.registry import claude_current_ids
 from config import load_config, Config, MODELS, EXTRA_MODELS, all_models, selectable_models, model_output_dir, model_provider
 from ingest.pdf_loader import load_pdf_text, PageText
 from ingest.text_cleaner import clean_text
@@ -78,7 +79,8 @@ def _resolve_models(requested: list[str] | None, configured_models: list[str],
         "gemini":  MODELS["gemini"],
         "groq":    MODELS.get("groq", []),
         "mistral": MODELS.get("mistral", []),
-        "claude":  EXTRA_MODELS["anthropic"],
+        "claude":  claude_current_ids(),            # newest Opus + Sonnet + Haiku
+        "claude-all": EXTRA_MODELS["anthropic"],    # every registered version (expensive)
         "compat":  EXTRA_MODELS["compat"],
         # Legacy aliases for backwards compatibility with older scripts.
         "llama":   [m for m in MODELS.get("groq", []) if "llama" in m.lower()]
@@ -90,7 +92,7 @@ def _resolve_models(requested: list[str] | None, configured_models: list[str],
             if model_name not in allowed:
                 raise SystemExit(
                     f"Unsupported model '{selector}'. Supported models: {', '.join(allowed)}. "
-                    "Aliases: openai, gemini, groq, mistral, llama, claude, compat"
+                    "Aliases: openai, gemini, groq, mistral, llama, claude, claude-all, compat"
                 )
             if model_name not in resolved:
                 resolved.append(model_name)

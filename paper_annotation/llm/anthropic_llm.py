@@ -20,6 +20,7 @@ import anthropic
 
 from llm.base import BaseLLM
 from llm.json_utils import UNKNOWN_RESPONSE, parse_validated
+from llm.registry import supports_effort
 
 
 @dataclass(frozen=True)
@@ -43,11 +44,14 @@ class AnthropicLLM(BaseLLM):
         self._max_tokens = settings.max_tokens or int(os.getenv("ANTHROPIC_MAX_TOKENS", "16000"))
 
     def _call_api(self, prompt: str) -> str:
+        kwargs = {}
+        if supports_effort(self._model_name):       # Haiku 4.5 rejects output_config.effort
+            kwargs["output_config"] = {"effort": self._effort}
         response = self._client.messages.create(
             model=self._model_name,
             max_tokens=self._max_tokens,
-            output_config={"effort": self._effort},
             messages=[{"role": "user", "content": prompt}],
+            **kwargs,
         )
         if response.stop_reason == "refusal":
             return json.dumps({**UNKNOWN_RESPONSE, "reasoning": "Model declined to answer (safety refusal)."})

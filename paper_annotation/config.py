@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from llm.registry import claude_ids
+
 
 PIPELINE_CONFIG = {
     "chunk_size": 900,
@@ -59,7 +61,7 @@ MODEL_OUTPUT_DIRS = {
 # Opt-in models: NOT run by default (they cost money / need extra keys). Select them explicitly with
 #   python main.py --model claude-sonnet-5-5 --model claude-opus-5-5 ...   or aliases: claude, compat
 EXTRA_MODELS = {
-    "anthropic": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"],
+    "anthropic": claude_ids(),   # every registered Claude version (llm/registry.py)
     # OpenAI-compatible hosts (Groq/Together/OpenRouter/Ollama...) for newer Llama / Mistral / Gemma:
     #   COMPAT_MODELS="google/gemma-3-27b-it,meta-llama/llama-4-maverick"
     "compat": [m.strip() for m in os.getenv("COMPAT_MODELS", "").split(",") if m.strip()],
