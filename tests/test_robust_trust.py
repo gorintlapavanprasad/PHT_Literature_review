@@ -167,3 +167,17 @@ def test_trust_target_validation(df):
 def test_features_work_without_passes_column(df):
     t = T.trust_features(df.drop(columns=["passes"]))
     assert (t["passes_extra"] == 0).all()
+
+
+def test_learning_curve_shape_and_improves_with_more_papers(df):
+    lc = T.learning_curve(df, sizes=(3, 10, 40), repeats=15, seed=1)
+    assert list(lc.papers_to_fit) == [3, 10, 40]
+    assert (lc.auroc_p10 <= lc.auroc_mean).all() and (lc.auroc_mean <= lc.auroc_p90).all()
+    assert lc.auroc_mean.iloc[-1] > 0.55                                    # useful with 40 coded papers
+    assert lc.auroc_p90.iloc[0] - lc.auroc_p10.iloc[0] > lc.auroc_p90.iloc[-1] - lc.auroc_p10.iloc[-1]   # less spread with more papers
+
+
+def test_learning_curve_skips_sizes_larger_than_available(df):
+    small = df[df.paper_id.isin(sorted(df.paper_id.unique())[:12])]
+    lc = T.learning_curve(small, sizes=(5, 10, 50), repeats=5)
+    assert list(lc.papers_to_fit) == [5]

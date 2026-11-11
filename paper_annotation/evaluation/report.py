@@ -127,6 +127,10 @@ def build_report(results_dir: Path, out_dir: Path, human_csv: Path | None = None
                 lines.append(f"- review {frac:.0%}: auto-accepted answers are within-1 {rp['auto_accept_within_1']:.3f} "
                              f"(overall {rp['overall_within_1']:.3f}), exact {rp['auto_accept_exact']:.3f} (overall {rp['overall_exact']:.3f})")
             lines.append("")
+            lc = T.learning_curve(df)
+            if len(lc):
+                lc.to_csv(out_dir / "trust_learning_curve.csv", index=False)
+                lines += ["How many human-coded papers are needed to fit the trust score (AUROC on the remaining papers):", "", _md(lc.set_index("papers_to_fit")), ""]
 
         ens = pd.concat([A.ensemble(df, m) for m in ("median", "mode", "conf_weighted")])
         ens = A.attach_human(ens, df[["paper_id", "q", "human"]].drop_duplicates())

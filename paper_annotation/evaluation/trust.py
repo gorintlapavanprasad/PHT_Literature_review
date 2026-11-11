@@ -146,3 +146,31 @@ def review_plan(scored: pd.DataFrame, review_fraction: float, score_col: str = "
         out["overall_exact"] = float((s["diff"] == 0).mean())
     out["review_cells"] = review[[c for c in ("paper_id", "q", "provider", score_col) if c in review]]
     return out
+
+
+def learning_curve(df: pd.DataFrame, sizes=(5, 10, 20, 30, 50), repeats: int = 30, target: str = "near", seed: int = 0) -> pd.DataFrame:
+    """How many human-coded papers does a researcher need before the trust score is useful?
+
+    For each size n: repeatedly draw n papers to fit on, score the REMAINING papers, and record the AUROC.
+    Reports the mean and the 10th-90th percentile range over the repeats. Sizes larger than the number of
+    available papers (minus a held-out set) are skipped.
+    """
+    d = df.dropna(subset=["answer_num", "diff"])
+    papers = d["paper_id"].unique()
+    rng = np.random.default_rng(seed)
+    rows = []
+    for n in sizes:
+        if n > len(papers) - 5:
+            continue
+        aucs = []
+        for _ in range(repeats):
+            fit_papers = set(rng.choice(papers, size=n, replace=False))
+            train, test = d[d["paper_id"].isin(fit_papers)], d[~d["paper_id"].isin(fit_papers)]
+            y_tr, y_te = _target(train, target), _target(test, target)
+            if y_tr.nunique() < 2 or y_te.nunique() < 2:
+                continue
+            aucs.append(auroc(fit_trust(train, target).score(test), y_te))
+        if aucs:
+            rows.append({"papers_to_fit": n, "auroc_mean": float(np.mean(aucs)), "auroc_p10": float(np.percentile(aucs, 10)),
+                         "auroc_p90": float(np.percentile(aucs, 90)), "repeats": len(aucs)})
+    return pd.DataFrame(rows, columns=["papers_to_fit", "auroc_mean", "auroc_p10", "auroc_p90", "repeats"])
