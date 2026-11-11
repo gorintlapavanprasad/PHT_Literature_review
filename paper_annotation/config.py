@@ -65,7 +65,17 @@ EXTRA_MODELS = {
     # OpenAI-compatible hosts (Groq/Together/OpenRouter/Ollama...) for newer Llama / Mistral / Gemma:
     #   COMPAT_MODELS="google/gemma-3-27b-it,meta-llama/llama-4-maverick"
     "compat": [m.strip() for m in os.getenv("COMPAT_MODELS", "").split(",") if m.strip()],
+    # Newer versions of the paper's providers. CANDIDATE IDs taken from the providers' own changelog/docs pages on
+    # 2026-11-10 and NOT yet verified against a live account - run `python scripts/smoke_models.py` to confirm, and
+    # add/replace IDs with OPENAI_EXTRA_MODELS / GEMINI_EXTRA_MODELS / MISTRAL_EXTRA_MODELS (comma separated).
+    "openai": ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+    "gemini": ["gemini-3.6-flash"],
+    "mistral": [],
 }
+for _prov, _env in (("openai", "OPENAI_EXTRA_MODELS"), ("gemini", "GEMINI_EXTRA_MODELS"), ("mistral", "MISTRAL_EXTRA_MODELS")):
+    for _m in os.getenv(_env, "").split(","):
+        if _m.strip() and _m.strip() not in EXTRA_MODELS[_prov]:
+            EXTRA_MODELS[_prov].append(_m.strip())
 
 
 # Environment variable that holds the credential for each provider (never print the values).
@@ -97,17 +107,17 @@ def all_models() -> list[str]:
 
 def selectable_models() -> list[str]:
     """Default models plus the opt-in ones (what --model may name)."""
-    return [*all_models(), *EXTRA_MODELS["anthropic"], *EXTRA_MODELS["compat"]]
+    extras = [m for models in EXTRA_MODELS.values() for m in models]
+    return [*all_models(), *[m for m in extras if m not in all_models()]]
 
 
 def model_output_dir(model_name: str) -> str:
     """Map a model name to its results directory (one folder per model - runs never mix)."""
     if model_name in MODEL_OUTPUT_DIRS:
         return MODEL_OUTPUT_DIRS[model_name]
-    if model_name in EXTRA_MODELS["anthropic"]:
-        return f"anthropic_{_slug(model_name)}"
-    if model_name in EXTRA_MODELS["compat"]:
-        return f"compat_{_slug(model_name)}"
+    for provider, models in EXTRA_MODELS.items():
+        if model_name in models:
+            return f"{provider}_{_slug(model_name)}"
     raise ValueError(f"No results directory configured for model: {model_name}")
 
 
@@ -123,10 +133,9 @@ def model_provider(model_name: str) -> str:
         return "huggingface"
     if model_name in MODELS["gemini"]:
         return "gemini"
-    if model_name in EXTRA_MODELS["anthropic"]:
-        return "anthropic"
-    if model_name in EXTRA_MODELS["compat"]:
-        return "compat"
+    for provider, models in EXTRA_MODELS.items():
+        if model_name in models:
+            return provider
     raise ValueError(f"Unsupported model: {model_name}")
 
 
