@@ -57,3 +57,7 @@ pht_ui/backend/data/human_consensus.csv
 # Reference code if it contains anything sensitive
 # (review this folder before un-commenting if you want to include it)
 # reference\ code/
+
+# pilot runs (scripts/pilot.py) and local model files
+pilot/
+models/

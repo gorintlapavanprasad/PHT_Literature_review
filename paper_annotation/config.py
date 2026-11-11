@@ -189,9 +189,10 @@ def load_config() -> Config:
 
     return Config(
         data_dir=data_dir,
-        pdf_dir=base_dir.parent / "papers",
-        index_dir=data_dir / "indexes",
-        results_dir=data_dir / "results",
+        # PDF_DIR / INDEX_DIR / RESULTS_DIR let a pilot run in its own folders without touching the real results.
+        pdf_dir=Path(os.getenv("PDF_DIR") or base_dir.parent / "papers"),
+        index_dir=Path(os.getenv("INDEX_DIR") or data_dir / "indexes"),
+        results_dir=Path(os.getenv("RESULTS_DIR") or data_dir / "results"),
         chunk_size=int(os.getenv("CHUNK_SIZE", str(PIPELINE_CONFIG["chunk_size"]))),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", str(PIPELINE_CONFIG["chunk_overlap"]))),
         top_k=int(os.getenv("TOP_K", str(PIPELINE_CONFIG.get("top_k")))),
