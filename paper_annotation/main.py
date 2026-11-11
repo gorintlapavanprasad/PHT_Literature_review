@@ -57,6 +57,19 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--fewshot-human",
+        type=Path,
+        default=None,
+        help="Human consensus CSV (Covidence export or paper_id,q,human). Uses examples from OTHER coded papers "
+             "instead of the single fixed example (leave-one-paper-out).",
+    )
+    parser.add_argument(
+        "--fewshot-k",
+        type=int,
+        default=3,
+        help="Examples per question when --fewshot-human is used.",
+    )
+    parser.add_argument(
         "--force-ingest",
         action="store_true",
         help="Re-embed papers even if indexes already exist (only applicable for 'ingest' or 'all' stage).",
@@ -244,6 +257,7 @@ def annotate_paper(
     embedding_service: EmbeddingService,
     config: Config,
     model_name: str,
+    fewshot=None,
 ) -> List[AnnotationRecord]:
     """Annotate a single paper with all questions."""
     paper_id = _paper_id_from_path(pdf_path)
@@ -274,6 +288,7 @@ def annotate_paper(
             question_index=q_index,
             max_expansions=config.max_expansions,
             force_choice=config.force_choice,
+            fewshot=fewshot,
         )
 
     return run_bounded(question_payloads, _worker, max_workers=config.max_concurrency)
@@ -329,6 +344,15 @@ if __name__ == "__main__":
         llms = {model_name: _build_llm(model_name, config) for model_name in models_to_run}
         logging.info("Models selected: %s", ", ".join(models_to_run))
 
+        fewshot = None
+        if args.fewshot_human:
+            from evaluation.report import load_human
+            from llm.fewshot import FewShotBank
+
+            bank = FewShotBank.build(load_human(args.fewshot_human), config.index_dir, config.results_dir)
+            logging.info("Few-shot bank: %d examples from consensus-coded papers", len(bank.examples))
+            fewshot = lambda pid, qi: bank.block_for(pid, qi, k=args.fewshot_k)  # noqa: E731
+
         jobs = []
         for pdf_path in pdfs:
             paper_id = _paper_id_from_path(pdf_path)
@@ -350,6 +374,7 @@ if __name__ == "__main__":
                 embedding_service=embedding_service,
                 config=config,
                 model_name=model_name,
+                fewshot=fewshot,
             )
             write_jsonl(records, output_path)
             logging.info("Wrote results to %s", output_path)

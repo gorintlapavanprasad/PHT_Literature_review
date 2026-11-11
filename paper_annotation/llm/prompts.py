@@ -212,7 +212,8 @@ def _render_context(chunks: List[TextChunk]) -> str:
     return "\n\n".join(lines)
 
 
-def build_prompt(question: str, chunks: List[TextChunk], question_index: int | None = None) -> str:
+def build_prompt(question: str, chunks: List[TextChunk], question_index: int | None = None,
+                 extra_examples: str = "") -> str:
     """Build the full prompt for one question + paper context.
 
     If question_index is provided, a dimension-specific few-shot example is
@@ -224,7 +225,9 @@ def build_prompt(question: str, chunks: List[TextChunk], question_index: int | N
         _CONFIDENCE_ANCHORS,
     ]
 
-    if question_index is not None and question_index in _FEW_SHOT_EXAMPLES:
+    if extra_examples:                       # consensus-coded examples (llm/fewshot.py), replace the fixed one
+        parts.append(extra_examples)
+    elif question_index is not None and question_index in _FEW_SHOT_EXAMPLES:
         parts.append(_FEW_SHOT_EXAMPLES[question_index])
 
     parts.append(_OUTPUT_SCHEMA)
@@ -251,7 +254,8 @@ _FORCED_CHOICE_SUFFIX = (
 )
 
 
-def build_forced_choice_prompt(question: str, chunks: List[TextChunk], question_index: int | None = None) -> str:
+def build_forced_choice_prompt(question: str, chunks: List[TextChunk], question_index: int | None = None,
+                               extra_examples: str = "") -> str:
     """Same prompt as build_prompt, plus an instruction to commit to a 1-5 answer.
 
     OFF by default. The paper's original (v1) pipeline did this and its analysis found forced answers are the

@@ -128,6 +128,7 @@ def annotate_question(
     question_index: int | None = None,
     max_expansions: int = 1,
     force_choice: bool = False,
+    fewshot=None,
 ) -> AnnotationRecord:
     """Annotate a single question for a paper.
 
@@ -138,6 +139,9 @@ def annotate_question(
       4. Accept whatever came back — including Unknown / Not Applicable.
          No forced guessing.
     """
+    extra = ""
+    if fewshot is not None and question_index is not None:
+        extra = fewshot(paper_id, question_index) or ""     # never contains this paper (leave-one-out)
     total_chunks = len(embedded.chunks)
     total_latency = 0.0
     passes = 0
@@ -146,7 +150,7 @@ def annotate_question(
     if total_chunks <= _FULL_CONTEXT_CHUNK_THRESHOLD:
         # Small paper: provide full context to avoid missing evidence.
         selected_chunks = embedded.chunks
-        prompt = build_prompt(question, selected_chunks, question_index=question_index)
+        prompt = build_prompt(question, selected_chunks, question_index=question_index, extra_examples=extra)
         raw = llm.generate(prompt)
         passes += 1
         response = _parse_llm_response(raw)
@@ -164,7 +168,7 @@ def annotate_question(
             top_k=top_k,
         )
         selected_chunks = retrieval.chunks
-        prompt = build_prompt(question, selected_chunks, question_index=question_index)
+        prompt = build_prompt(question, selected_chunks, question_index=question_index, extra_examples=extra)
         raw = llm.generate(prompt)
         passes += 1
         response = _parse_llm_response(raw)
@@ -187,7 +191,7 @@ def annotate_question(
                 retry_chunks = retriever.retrieve(
                     query=question, query_embedding=query_embedding, top_k=current_k
                 ).chunks
-                retry_raw = llm.generate(build_prompt(question, retry_chunks, question_index=question_index))
+                retry_raw = llm.generate(build_prompt(question, retry_chunks, question_index=question_index, extra_examples=extra))
                 passes += 1
                 retry_response = _parse_llm_response(retry_raw)
                 total_latency += float(retry_response.get("latency_seconds", 0.0))
@@ -205,7 +209,7 @@ def annotate_question(
 
     # Optional v1 behaviour (ablation only): still Unknown after every pass -> make the model pick a best fit.
     if force_choice and decision_mode == "unresolved":
-        forced_raw = llm.generate(build_forced_choice_prompt(question, selected_chunks, question_index=question_index))
+        forced_raw = llm.generate(build_forced_choice_prompt(question, selected_chunks, question_index=question_index, extra_examples=extra))
         passes += 1
         forced_response = _parse_llm_response(forced_raw)
         total_latency += float(forced_response.get("latency_seconds", 0.0))
