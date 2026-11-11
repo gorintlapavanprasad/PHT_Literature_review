@@ -1,5 +1,4 @@
 """API tests for pht_ui backend: upload -> stream (fake LLMs) -> cached results -> re-stream."""
-import dataclasses
 import json
 
 import pytest

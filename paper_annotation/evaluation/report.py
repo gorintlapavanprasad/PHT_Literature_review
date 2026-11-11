@@ -29,7 +29,7 @@ def _md(df: pd.DataFrame, floatfmt: str = ".3f") -> str:
 
 def _has_tabulate() -> bool:
     try:
-        import tabulate  # noqa: F401
+        import tabulate  # noqa: F401  (availability probe only)
         return True
     except ImportError:
         return False

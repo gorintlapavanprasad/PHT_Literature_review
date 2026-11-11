@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 from openai import BadRequestError
 
-from llm import gemini_llm as G
 from llm.gemini_llm import GeminiLLM, GeminiSettings, gemini_accepts_sampling
 from llm.openai_llm import OpenAILLM, OpenAISettings
 

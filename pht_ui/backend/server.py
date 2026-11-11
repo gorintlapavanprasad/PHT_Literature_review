@@ -56,7 +56,7 @@ sys.path.insert(0, str(PIPELINE_ROOT))
 
 load_dotenv(PIPELINE_ROOT / ".env")
 
-from config import load_config, all_models, model_output_dir, model_provider  # noqa: E402
+from config import load_config  # noqa: E402
 from ingest.embedding_service import EmbeddingService, EmbeddingConfig  # noqa: E402
 from questions import PHT_FRAMEWORK_QUESTIONS  # noqa: E402
 

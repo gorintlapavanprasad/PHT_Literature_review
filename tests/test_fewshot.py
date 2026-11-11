@@ -2,7 +2,6 @@
 import json
 
 import pandas as pd
-import pytest
 
 from conftest import ScriptedLLM, llm_json
 from ingest.chunker import TextChunk
