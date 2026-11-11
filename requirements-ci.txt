@@ -19,3 +19,4 @@ tqdm
 pytest
 httpx
 anthropic
+pyyaml
