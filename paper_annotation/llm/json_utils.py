@@ -17,6 +17,26 @@ class LLMResponse(BaseModel):
     reasoning: str
 
 
+def content_to_text(content) -> str:
+    """Chat 'content' as plain text. Some APIs (e.g. newer Mistral models) return a LIST of parts such as
+    [{"type": "text", "text": "..."}] instead of a string; anything that is not text (thinking parts) is dropped."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for p in content:
+            if isinstance(p, str):
+                parts.append(p)
+            elif isinstance(p, dict) and p.get("type", "text") == "text":
+                parts.append(str(p.get("text", "")))
+            elif getattr(p, "type", "text") == "text" and getattr(p, "text", None) is not None:
+                parts.append(str(p.text))
+        return "".join(parts)
+    return str(content)
+
+
 def extract_json_object(text: str) -> Optional[dict]:
     """Return the first JSON object in `text` (raw, ```json fenced, or embedded in prose)."""
     text = (text or "").strip()

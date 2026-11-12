@@ -150,3 +150,50 @@ def test_json_utils_validation_rejects_bad_confidence():
     from llm.json_utils import parse_validated
     assert parse_validated(json.dumps({"answer": 3, "confidence": 1.5, "evidence": [], "reasoning": "r"})) is None
     assert parse_validated("no json") is None
+
+
+# ---------------------------------------------------------------- live failure: replies that arrive as a list of parts
+def test_content_to_text_handles_strings_lists_and_thinking_parts():
+    from llm.json_utils import content_to_text
+    assert content_to_text("abc") == "abc" and content_to_text(None) == ""
+    assert content_to_text([{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]) == "ab"
+    assert content_to_text([{"type": "thinking", "thinking": "hmm"}, {"type": "text", "text": '{"x":1}'}]) == '{"x":1}'
+    assert content_to_text(["a", SimpleNamespace(type="text", text="b")]) == "ab"
+
+
+def test_mistral_and_groq_wrappers_accept_list_style_replies():
+    """Live failure: 'the JSON object must be str, bytes or bytearray, not list' on mistral-large-latest."""
+    from llm.mistral_llm import MistralLLM, MistralSettings
+    parts = [{"type": "text", "text": GOOD}]
+
+    class Comp:
+        def create(self, **kw):
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=parts))])
+
+    llm = MistralLLM(MistralSettings("k", "mistral-large-latest", 0.1))
+    llm._client = SimpleNamespace(chat=SimpleNamespace(completions=Comp()))
+    assert json.loads(llm.generate("p"))["answer"] == 3
+
+
+def test_compat_provider_accepts_list_style_replies():
+    from llm.compat_llm import CompatLLM, CompatSettings
+
+    class Comp:
+        def create(self, **kw):
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=[{"type": "text", "text": GOOD}]))])
+
+    llm = CompatLLM(CompatSettings("k", "http://localhost:1/v1", "m", 0.1))
+    llm._client = SimpleNamespace(chat=SimpleNamespace(completions=Comp()))
+    assert json.loads(llm.generate("p"))["answer"] == 3
+
+
+def test_mistral_and_groq_parse_fenced_json():
+    from llm.mistral_llm import MistralLLM, MistralSettings
+
+    class Comp:
+        def create(self, **kw):
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="```json\n" + GOOD + "\n```"))])
+
+    llm = MistralLLM(MistralSettings("k", "m", 0.1))
+    llm._client = SimpleNamespace(chat=SimpleNamespace(completions=Comp()))
+    assert json.loads(llm.generate("p"))["answer"] == 3

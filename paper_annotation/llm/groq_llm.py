@@ -20,6 +20,7 @@ from openai import OpenAI, APIError, RateLimitError, APITimeoutError, APIConnect
 from pydantic import BaseModel, Field, ValidationError
 
 from llm.base import BaseLLM
+from llm.json_utils import content_to_text, parse_validated
 
 
 class LLMResponse(BaseModel):
@@ -54,12 +55,8 @@ class GroqLLM(BaseLLM):
         self._temperature = settings.temperature
 
     def _parse(self, content: str) -> Optional[Dict]:
-        try:
-            data = json.loads(content)
-            validated = LLMResponse(**data)
-            return validated.model_dump()
-        except (json.JSONDecodeError, ValidationError):
-            return None
+        return parse_validated(content)   # tolerant of ```json fences and text around the JSON
+
 
     def _call_api(self, prompt: str) -> str:
         response = self._client.chat.completions.create(
@@ -68,7 +65,7 @@ class GroqLLM(BaseLLM):
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
         )
-        return response.choices[0].message.content or ""
+        return content_to_text(response.choices[0].message.content)
 
     def generate(self, prompt: str) -> str:
         start = time.perf_counter()

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from openai import OpenAI
 
 from llm.base import BaseLLM
-from llm.json_utils import UNKNOWN_RESPONSE, parse_validated
+from llm.json_utils import UNKNOWN_RESPONSE, content_to_text, parse_validated
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class CompatLLM(BaseLLM):
             temperature=self._temperature,
             messages=[{"role": "user", "content": prompt}],
         )
-        return r.choices[0].message.content or ""
+        return content_to_text(r.choices[0].message.content)
 
     def generate(self, prompt: str) -> str:
         start = time.perf_counter()
