@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from openai import BadRequestError
 
+from llm import gemini_llm as G
 from llm.gemini_llm import GeminiLLM, GeminiSettings, gemini_accepts_sampling
 from llm.openai_llm import OpenAILLM, OpenAISettings
 
@@ -100,3 +101,22 @@ def test_openai_other_bad_requests_still_raise():
     llm, _ = _openai(lambda n: (_ for _ in ()).throw(_bad_request("model_not_found")))
     with pytest.raises(BadRequestError):
         llm.generate("p")
+
+
+def test_gemini_client_uses_v1beta_so_json_mode_works(monkeypatch):
+    """Live failure: 'JSON mode is not enabled for api version v1. Use api version v1beta instead.'"""
+    from google import genai
+    seen = {}
+    real = genai.Client
+
+    def spy(*a, **kw):
+        seen.update(kw)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(G.genai, "Client", spy)
+    monkeypatch.delenv("GEMINI_API_VERSION", raising=False)
+    GeminiLLM(GeminiSettings(api_key="x", model="gemini-2.5-flash", temperature=0.1))
+    assert seen["http_options"].api_version == "v1beta"
+    monkeypatch.setenv("GEMINI_API_VERSION", "v1")
+    GeminiLLM(GeminiSettings(api_key="x", model="gemini-2.5-flash", temperature=0.1))
+    assert seen["http_options"].api_version == "v1"

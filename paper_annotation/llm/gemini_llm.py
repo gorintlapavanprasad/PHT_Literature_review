@@ -58,7 +58,11 @@ class GeminiLLM(BaseLLM):
     def __init__(self, settings: GeminiSettings) -> None:
         self.settings = settings
         self._send_temperature = gemini_accepts_sampling(settings.model)
-        self._client = genai.Client(api_key=settings.api_key)
+        # Newer google-genai releases default to the stable "v1" API, which rejects JSON output mode
+        # (response_mime_type / response_schema). "v1beta" supports it. Override with GEMINI_API_VERSION.
+        import os
+        version = os.getenv("GEMINI_API_VERSION", "v1beta")
+        self._client = genai.Client(api_key=settings.api_key, http_options=types.HttpOptions(api_version=version))
 
     def _validate(self, payload: dict) -> Optional[Dict]:
         try:
