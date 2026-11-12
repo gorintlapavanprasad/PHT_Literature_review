@@ -7,7 +7,7 @@ import main as pipeline_main
 
 def test_candidates_never_in_default_run():
     default = set(config.all_models())
-    for prov in ("openai", "gemini", "mistral"):
+    for prov in ("openai", "gemini", "mistral", "groq"):
         assert not set(config.EXTRA_MODELS[prov]) & default
     assert pipeline_main._resolve_models(None, config.all_models(), config.selectable_models()) == config.all_models()
 
@@ -45,3 +45,12 @@ def test_every_selectable_model_has_unique_results_folder_and_known_provider():
     dirs = [config.model_output_dir(m) for m in models]
     assert len(dirs) == len(set(dirs))
     assert all(config.model_provider(m) in config.PROVIDER_KEYS for m in models)
+
+
+def test_groq_default_is_marked_retired_and_new_aliases_resolve():
+    sel = config.selectable_models()
+    assert "llama-3.3-70b-versatile" in config.all_models()                       # study snapshot kept
+    assert pipeline_main._resolve_models(["groq-new"], config.all_models(), sel) == config.EXTRA_MODELS["groq"]
+    assert config.model_provider("openai/gpt-oss-120b") == "groq"
+    assert config.model_output_dir("openai/gpt-oss-120b") == "groq_openai_gpt_oss_120b"
+    assert {"mistral-large-latest", "mistral-medium-latest"} <= set(config.EXTRA_MODELS["mistral"])

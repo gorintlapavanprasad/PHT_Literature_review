@@ -98,6 +98,7 @@ def _resolve_models(requested: list[str] | None, configured_models: list[str],
         "openai-new": EXTRA_MODELS["openai"],
         "gemini-new": EXTRA_MODELS["gemini"],
         "mistral-new": EXTRA_MODELS["mistral"],
+        "groq-new": EXTRA_MODELS["groq"],
         # Legacy aliases for backwards compatibility with older scripts.
         "llama":   [m for m in MODELS.get("groq", []) if "llama" in m.lower()]
                    + [m for m in MODELS["huggingface"] if "llama" in m.lower()],
@@ -108,7 +109,7 @@ def _resolve_models(requested: list[str] | None, configured_models: list[str],
             if model_name not in allowed:
                 raise SystemExit(
                     f"Unsupported model '{selector}'. Supported models: {', '.join(allowed)}. "
-                    "Aliases: openai, gemini, groq, mistral, llama, claude, claude-all, compat, openai-new, gemini-new, mistral-new"
+                    "Aliases: openai, gemini, groq, mistral, llama, claude, claude-all, compat, openai-new, gemini-new, mistral-new, groq-new"
                 )
             if model_name not in resolved:
                 resolved.append(model_name)

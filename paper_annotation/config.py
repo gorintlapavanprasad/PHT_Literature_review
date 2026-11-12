@@ -71,9 +71,14 @@ EXTRA_MODELS = {
     # add/replace IDs with OPENAI_EXTRA_MODELS / GEMINI_EXTRA_MODELS / MISTRAL_EXTRA_MODELS (comma separated).
     "openai": ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
     "gemini": ["gemini-3.6-flash"],
-    "mistral": [],
+    # Mistral IDs below were listed by the live API on 2026-11-12 (scripts/list_models.py mistral).
+    "mistral": ["mistral-large-latest", "mistral-medium-latest"],
+    # Groq no longer hosts Llama: llama-3.3-70b-versatile (the study default above) returns 404. IDs below were
+    # listed by the live Groq API on 2026-11-12 (scripts/list_models.py groq).
+    "groq": ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
 }
-for _prov, _env in (("openai", "OPENAI_EXTRA_MODELS"), ("gemini", "GEMINI_EXTRA_MODELS"), ("mistral", "MISTRAL_EXTRA_MODELS")):
+for _prov, _env in (("openai", "OPENAI_EXTRA_MODELS"), ("gemini", "GEMINI_EXTRA_MODELS"),
+                    ("mistral", "MISTRAL_EXTRA_MODELS"), ("groq", "GROQ_EXTRA_MODELS")):
     for _m in os.getenv(_env, "").split(","):
         if _m.strip() and _m.strip() not in EXTRA_MODELS[_prov]:
             EXTRA_MODELS[_prov].append(_m.strip())
